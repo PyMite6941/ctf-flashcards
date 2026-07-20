@@ -1,0 +1,158 @@
+# CTF Flashcards & Challenges
+
+A cybersecurity **active-recall** learning app, built for RevenueCat's **Shipaton 2026** hackathon (targeting the Next Gen student award).
+
+**Learn by doing.** Solve HackTheBox-style **CTF puzzles** (decode, crack, spot the bug). Each flag you capture unlocks the concepts behind it as spaced-repetition flashcards — *the puzzles fuel the questions.* Every review is then free recall (you type your answer *before* seeing it), self-rated Again/Hard/Good/Easy, and scheduled by **FSRS** — the modern successor to Anki's SM-2 — so cards you struggle with come back in minutes and easy ones in weeks.
+
+> Built from `ctf-flashcards-shipaton-plan.md`. See that plan for the full hackathon rationale.
+
+**🌐 Live** (all Cloudflare): app → https://ctf-flashcards.pages.dev · API → https://ctf-flashcards-api.greshamd27.workers.dev
+Free tier = 3 puzzle solves/day; **Pro = $8/mo** (8 USDC on Base) via [GRID Store](https://grid-store.pages.dev). See `DEPLOYMENT.md`.
+
+---
+
+## The loop
+
+1. **Solve** a CTF puzzle — self-contained, offline-solvable (Base64, Caesar, XOR, JWT `alg:none`, hash cracking, log analysis, SQLi spotting…).
+2. **Capture the flag** → the puzzle's concept cards drop into your review deck.
+3. **Recall** them over time; **FSRS** reschedules each for the moment you're about to forget it.
+
+Cards are tagged by topic, so you can **filter reviews by topic** (crypto, web, forensics, hashes, …).
+
+---
+
+## Architecture
+
+Production is **all Cloudflare**: static frontend on Pages, backend as a Worker on D1, billing through the GRID Store worker. The Python backend is kept for local dev / reference and is a 1:1 match of the Worker.
+
+```
+ctf-flashcards/
+├── worker/           Cloudflare Worker + D1 — PRODUCTION backend (deployed)
+│   ├── src/index.js      routes (fetch handler)
+│   ├── src/db.js         D1 storage (cards / reviews / solves / inbox / daily_usage)
+│   ├── src/puzzles.js    CTF puzzle catalog (artifacts derived from flags)
+│   ├── src/scheduler.js  FSRS via ts-fsrs
+│   ├── src/billing.js    daily free cap + Pro entitlement (verified via GRID Store)
+│   └── schema.sql        D1 schema
+├── backend/          FastAPI + SQLite — local-dev twin of the Worker (py-fsrs)
+│   └── app/              main · db · puzzles · scheduler · billing
+├── web/              React + Vite — deployed to Cloudflare Pages
+│   └── src/components/   Home · Puzzles · ReviewSession · AddCard · Inbox · UpgradeModal
+└── monitor/          Opt-in local agent — plugin watchers push candidate cards
+    └── watchers/         base · log_watcher · tool_watcher  (drop in more)
+```
+
+Web nav: **Home** (dashboard) · **Puzzles** (challenge board + solve view) · **Flashcards** (topic-filterable review) · **Add** · **Inbox**.
+
+**Build order (from the plan):** shared backend → web app → Capacitor Android/iOS wrap → RevenueCat SDK. The backend stays shared the whole way — no per-platform logic.
+
+---
+
+## Run it locally
+
+### 1. Backend
+```bash
+cd backend
+python -m venv .venv
+.venv/Scripts/activate          # Windows;  source .venv/bin/activate on macOS/Linux
+pip install -r requirements.txt
+uvicorn app.main:app --reload   # serves on http://localhost:8000
+python seed.py                  # optional: load starter cyber cards + challenges
+```
+
+### 2. Web app
+```bash
+cd web
+npm install
+npm run dev                     # http://localhost:5173
+# point at a non-default backend with:  VITE_API_URL=http://host:port npm run dev
+```
+
+### 3. Local monitor (optional, opt-in)
+```bash
+cd monitor
+python agent.py --demo          # generates fake auth.log + nmap output, pushes to the inbox
+# real use:
+cp monitor.config.example.json monitor.config.json   # edit paths + enable watchers
+python agent.py                 # loops, polling your logs/tool output
+```
+Candidates never enter the deck directly — they land in the **review inbox** in the web app, where you approve (and edit) or reject them.
+
+### Accounts (Clerk — optional)
+
+Sign-in and "connect account" flows are powered by [Clerk](https://clerk.com), and are **entirely optional**: with no key the app runs in zero-key demo mode (no auth, one shared deck).
+
+To turn accounts on:
+1. Create an app at [dashboard.clerk.com](https://dashboard.clerk.com) and enable the social connections you want (Google, GitHub, …) under **User & Authentication → Social Connections**.
+2. Copy `web/.env.example` to `web/.env.local` and set `VITE_CLERK_PUBLISHABLE_KEY=pk_test_…`.
+3. Restart `npm run dev`. A **Sign in** button appears in the header; once signed in it becomes Clerk's **UserButton**, whose "Manage account" panel is where users link social accounts.
+
+Only the frontend publishable key is used (safe to expose). The deck is still shared for now — per-user decks are a later upgrade. The publishable key lives in `.env.local`, which is gitignored.
+
+---
+
+## The recall loop
+
+1. Card shows a prompt (a question, or a `CHALLENGE:` — spot-the-vuln, decode a hash, read a log line).
+2. You type your answer **from memory** first.
+3. Reveal the correct answer.
+4. Self-rate **Again / Hard / Good / Easy** → FSRS reschedules the card.
+
+Mixing definitional recall with applied challenges (same loop, different retrieval) is deliberate — it strengthens memory beyond plain flashcards.
+
+---
+
+## Content input (plan §6)
+
+- **Manual** — the **Add** tab: flashcards or challenges, by hand.
+- **Local monitor (automatic, opt-in)** — watchers generate candidates → review inbox → your approval → deck.
+
+### Adding a watcher
+Drop a new file in `monitor/watchers/` implementing the `Watcher` protocol (`name` + `poll() -> Iterable[Candidate]`) from `watchers/base.py`, then register its `type` in `agent.build_watchers`. The core never changes.
+
+---
+
+## Where RevenueCat fits
+
+The RevenueCat SDK powers the paid tier in the **mobile shells** (satisfying the hackathon's in-app-purchase requirement). Natural premium features:
+
+- Additional card packs / topic decks
+- Unlocking extra local-monitor watcher plugins
+- Removing limits on manual cards / inbox size
+
+The web build shows the premium surface as a placeholder; the SDK is wired in when the app is wrapped with Capacitor (`npx cap add android` / `ios`, with `web/dist` as the `webDir`).
+
+---
+
+## Status
+
+- [x] Backend **live on Cloudflare Workers + D1** (ts-fsrs), full route parity with the Python twin
+- [x] Frontend **live on Cloudflare Pages**, wired to the Worker
+- [x] Web app: Home dashboard · Puzzles board + solve · topic-filtered Flashcards · Add · Inbox
+- [x] 9 self-contained CTF puzzles across 6 categories; solving unlocks concept cards
+- [x] Topic (tag) filtering on reviews and cards
+- [x] **Free tier: 3 puzzle solves/day**; **Pro $8/mo** via in-page USDC checkout through GRID Store (`ctf_pro` tier live)
+- [x] Optional Clerk sign-in (zero-key demo fallback)
+- [x] Local monitor with plugin watchers (log + tool), inbox-safeguarded
+- [x] 57-check backend test suite (`python test_api.py`), every puzzle verified solvable
+- [ ] Capacitor Android/iOS shells + RevenueCat (mobile paid tier) — future
+
+## API quick reference
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | liveness + review/points/solved counts |
+| GET/POST | `/cards` | list (`?deck=` `?tag=`) / create cards |
+| DELETE | `/cards/{id}` | remove a card |
+| GET | `/topics` | distinct tags with due/total counts (topic filter) |
+| GET | `/review/queue?limit=&tag=` | cards due now, optionally one topic |
+| POST | `/cards/{id}/review` | submit a rating (1–4), FSRS reschedules |
+| GET | `/puzzles?category=&difficulty=&status=` | challenge board (flags never leaked) |
+| GET | `/puzzles/{id}` | puzzle detail + artifact (solution hidden until solved) |
+| POST | `/puzzles/{id}/submit` | submit a flag → awards points, unlocks concept cards |
+| GET/POST | `/inbox` | list pending / add a candidate |
+| POST | `/inbox/{id}/approve` | approve (with edits) → deck |
+| POST | `/inbox/{id}/reject` | reject a candidate |
+
+### Adding a puzzle
+Append a dict to `CATALOG` in `backend/app/puzzles.py`: `id`, `title`, `category`, `difficulty`, `points`, `description`, `hint`, `flag`, `artifact` (derive it from the flag with the `_b64`/`_caesar`/`_xor_hex`/… helpers so it can't drift), `solution`, and `cards` (the concept flashcards it unlocks, each with `tags` for topic filtering).

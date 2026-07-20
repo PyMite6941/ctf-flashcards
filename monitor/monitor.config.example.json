@@ -1,0 +1,16 @@
+{
+  "api_url": "http://localhost:8000",
+  "interval_seconds": 30,
+  "watchers": [
+    {
+      "type": "log",
+      "path": "/var/log/auth.log",
+      "enabled": false
+    },
+    {
+      "type": "tool",
+      "path": "./scan.txt",
+      "enabled": false
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+name               = "ctf-flashcards-api"
+main               = "src/index.js"
+compatibility_date = "2026-07-01"
+account_id         = "3f8d84ab0c6eca2903a0500df44b1912"
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "ctf-flashcards"
+database_id   = "5d1eced8-d2a4-4cad-8f08-b505f8a47cf5"
+
+[vars]
+# The GRID Store worker that verifies USDC payments + licenses (Pro entitlement).
+GRID_STORE_WORKER_URL = "https://grid-store-worker.greshamd27.workers.dev"
+# Free tier: puzzle solves per day before Pro is required.
+CTF_FREE_DAILY_SOLVES = "3"
+# ADMIN_KEY (for /admin/seed) is set as a secret: wrangler secret put ADMIN_KEY

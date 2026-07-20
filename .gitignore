@@ -1,0 +1,31 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# database (local scratch)
+*.sq3
+backend/ctf_flashcards.sq3
+
+# node / vite
+node_modules/
+web/dist/
+dist/
+
+# cloudflare wrangler local state / d1
+.wrangler/
+worker/.wrangler/
+
+# monitor local config + demo fixtures
+monitor/monitor.config.json
+monitor/_demo_*.log
+monitor/_demo_*.txt
+monitor/scan.txt
+
+# capacitor native shells (generated)
+android/
+ios/
+
+# env
+.env
+.env.local

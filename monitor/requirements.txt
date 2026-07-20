@@ -1,0 +1,2 @@
+# The monitor uses only the Python standard library (urllib, re, json).
+# No third-party dependencies required.
