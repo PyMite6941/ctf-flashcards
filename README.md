@@ -19,6 +19,17 @@ Free tier = 3 puzzle solves/day; **Pro = $8/mo** (8 USDC on Base) via [GRID Stor
 
 Cards are tagged by topic, so you can **filter reviews by topic** (crypto, web, forensics, hashes, …).
 
+## Learn (AI) — name a topic, get taught + tested
+
+The **Learn** tab turns the fixed catalog into an AI tutor (Groq):
+
+1. Enter any topic (SQL injection, JWT attacks, buffer overflows…).
+2. AI writes **flashcards** for it (into your deck, tagged with the topic) + **practice challenges** + a **downloadable lab kit**.
+3. The challenges stay **locked until you've reviewed every flashcard** for that topic — learn first, then prove it.
+4. Solve them in-browser (picoCTF-style). Solvability is guaranteed: the AI picks a challenge type + writes the flag, and the **Worker renders the artifact deterministically** (base64/hex/xor/caesar/binary/reverse), plus `concept` challenges that test the topic directly. The lab kit is for hands-on practice in **your own environment**.
+
+Requires a Groq key: `cd worker && wrangler secret put GROQ_API_KEY` (model defaults to `openai/gpt-oss-120b`).
+
 ---
 
 ## Architecture
@@ -132,6 +143,7 @@ The web build shows the premium surface as a placeholder; the SDK is wired in wh
 - [x] 9 self-contained CTF puzzles across 6 categories; solving unlocks concept cards
 - [x] Topic (tag) filtering on reviews and cards
 - [x] **Free tier: 3 puzzle solves/day**; **Pro $8/mo** via in-page USDC checkout through GRID Store (`ctf_pro` tier live)
+- [x] **Learn (AI)**: Groq generates topic flashcards + practice challenges + lab kit; challenges gated behind flashcard review; deterministic (solvable) artifacts
 - [x] Optional Clerk sign-in (zero-key demo fallback)
 - [x] Local monitor with plugin watchers (log + tool), inbox-safeguarded
 - [x] 57-check backend test suite (`python test_api.py`), every puzzle verified solvable

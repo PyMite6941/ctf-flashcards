@@ -45,6 +45,14 @@ export const api = {
   submitReview: (id, rating) =>
     req(`/cards/${id}/review`, { method: "POST", body: JSON.stringify({ rating }) }),
 
+  // AI topic packs
+  generatePack: (topic) => req("/ai/generate", { method: "POST", body: JSON.stringify({ topic }) }),
+  listPacks: () => req("/ai/packs"),
+  getPack: (slug) => req(`/ai/packs/${slug}`),
+  submitGenFlag: (id, flag) =>
+    req(`/ai/challenges/${id}/submit`, { method: "POST", body: JSON.stringify({ flag }) }),
+  labkitUrl: (slug) => `${BASE}/ai/packs/${slug}/labkit`,
+
   listPuzzles: (params = {}) => {
     const q = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v)

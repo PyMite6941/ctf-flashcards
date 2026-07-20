@@ -3,6 +3,7 @@ import { api } from "./lib/api.js";
 import Home from "./components/Home.jsx";
 import ReviewSession from "./components/ReviewSession.jsx";
 import Puzzles from "./components/Puzzles.jsx";
+import Learn from "./components/Learn.jsx";
 import AddCard from "./components/AddCard.jsx";
 import Inbox from "./components/Inbox.jsx";
 import AuthControls from "./components/AuthControls.jsx";
@@ -11,6 +12,7 @@ import { hasClerk } from "./lib/clerk.js";
 
 const TABS = [
   { id: "home", label: "Home" },
+  { id: "learn", label: "Learn (AI)" },
   { id: "puzzles", label: "Puzzles" },
   { id: "review", label: "Flashcards" },
   { id: "add", label: "Add" },
@@ -94,6 +96,7 @@ export default function App() {
 
       <main>
         {tab === "home" && <Home key={`h${refresh}`} go={setTab} limits={limits} openUpgrade={openUpgrade} />}
+        {tab === "learn" && <Learn go={setTab} onGenerated={bump} />}
         {tab === "review" && <ReviewSession key={`r${refresh}`} />}
         {/* stable key: solving refreshes header stats via onSolved without
             remounting (which would kick the user out of the solve view). */}

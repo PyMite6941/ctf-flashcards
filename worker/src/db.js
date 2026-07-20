@@ -166,3 +166,59 @@ export async function bumpSolvesToday(env, day, identity) {
     .bind(day, identity).first();
   return r.solves;
 }
+
+// ---------- AI topic packs ----------
+
+export async function upsertPack(env, { topic, topic_slug, labkit, card_count, challenge_count }) {
+  await env.DB.prepare(
+    "INSERT INTO gen_packs (id, topic, topic_slug, labkit, card_count, challenge_count, created_at) VALUES (?,?,?,?,?,?,?) " +
+      "ON CONFLICT(topic_slug) DO UPDATE SET topic=excluded.topic, labkit=excluded.labkit, " +
+      "card_count=excluded.card_count, challenge_count=excluded.challenge_count"
+  ).bind(uid(), topic, topic_slug, labkit, card_count, challenge_count, now()).run();
+}
+
+export async function insertGenChallenge(env, c) {
+  const id = uid();
+  await env.DB.prepare(
+    "INSERT INTO gen_challenges (id, topic_slug, title, category, difficulty, points, description, hint, artifact, flag, solution, challenge_type, created_at) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+  ).bind(id, c.topic_slug, c.title, c.category, c.difficulty, c.points, c.description, c.hint, c.artifact, c.flag, c.solution, c.challenge_type, now()).run();
+  return id;
+}
+
+export async function deleteGenChallengesForSlug(env, slug) {
+  await env.DB.prepare("DELETE FROM gen_challenges WHERE topic_slug = ?").bind(slug).run();
+}
+
+export async function listPacks(env) {
+  const { results } = await env.DB.prepare("SELECT * FROM gen_packs ORDER BY created_at DESC").all();
+  return results;
+}
+
+export async function getPack(env, slug) {
+  return env.DB.prepare("SELECT * FROM gen_packs WHERE topic_slug = ?").bind(slug).first();
+}
+
+export async function genChallengesForSlug(env, slug) {
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM gen_challenges WHERE topic_slug = ? ORDER BY created_at ASC"
+  ).bind(slug).all();
+  return results;
+}
+
+export async function getGenChallenge(env, id) {
+  return env.DB.prepare("SELECT * FROM gen_challenges WHERE id = ?").bind(id).first();
+}
+
+// A topic's flashcards are "finished" once every card tagged topic:<slug> has
+// been reviewed at least once (FSRS reps >= 1). Returns {total, reviewed, done}.
+export async function topicCardProgress(env, slug) {
+  const { results } = await env.DB.prepare("SELECT fsrs FROM cards WHERE tags LIKE ?")
+    .bind(`%"topic:${slug}"%`).all();
+  const total = results.length;
+  let reviewed = 0;
+  for (const r of results) {
+    try { if ((JSON.parse(r.fsrs).reps || 0) >= 1) reviewed++; } catch { /* skip */ }
+  }
+  return { total, reviewed, done: total > 0 && reviewed >= total };
+}

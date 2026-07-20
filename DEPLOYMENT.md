@@ -44,6 +44,15 @@ curl -X POST https://ctf-flashcards-api.greshamd27.workers.dev/admin/seed
 Vars in `wrangler.toml`: `GRID_STORE_WORKER_URL`, `CTF_FREE_DAILY_SOLVES` (default 3).
 Optional secret to lock `/admin/seed`: `npx wrangler secret put ADMIN_KEY`.
 
+**Learn (AI) requires a Groq key** — set it once, then the `/ai/*` endpoints work:
+```bash
+cd portfolio/ctf-flashcards/worker
+npx wrangler secret put GROQ_API_KEY     # paste your Groq API key
+# optional model override (default openai/gpt-oss-120b):
+# add GROQ_MODEL under [vars] in wrangler.toml, or as a secret
+```
+Without the key, the Learn tab shows a clean "AI is not configured" message; the rest of the app is unaffected.
+
 ### Frontend (Pages)
 ```bash
 cd portfolio/ctf-flashcards/web

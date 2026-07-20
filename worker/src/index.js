@@ -5,7 +5,19 @@
 import * as db from "./db.js";
 import * as puzzles from "./puzzles.js";
 import * as billing from "./billing.js";
+import * as aigen from "./aigen.js";
 import { newCardState, review as fsrsReview } from "./scheduler.js";
+
+// Public view of a generated challenge (never leak the flag).
+function stripGen(c, solved) {
+  const out = {
+    id: c.id, topic_slug: c.topic_slug, title: c.title, category: c.category,
+    difficulty: c.difficulty, points: c.points, description: c.description,
+    hint: c.hint, artifact: c.artifact, challenge_type: c.challenge_type, solved,
+  };
+  if (solved) out.solution = c.solution;
+  return out;
+}
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -195,6 +207,106 @@ async function route(request, env) {
     return json({
       correct: true, already_solved: already, points: puzzle.points,
       total_points: await db.totalPoints(env), solution: puzzle.solution, added_cards: added,
+    });
+  }
+
+  // ---- AI topic packs ----
+  // Generate a pack: flashcards (into the deck) + practice challenges (locked
+  // until the flashcards are reviewed) + a downloadable lab kit.
+  if (path === "/ai/generate" && method === "POST") {
+    const b = await body(request);
+    const topic = (b.topic || "").trim();
+    if (!topic) return json({ error: "topic required" }, 422);
+    if (topic.length > 120) return json({ error: "topic too long" }, 422);
+
+    let pack;
+    try {
+      pack = await aigen.generatePack(env, topic);
+    } catch (e) {
+      return json({ error: String(e.message || e) }, 502);
+    }
+    if (!pack.flashcards.length && !pack.challenges.length)
+      return json({ error: "AI returned an empty pack — try rephrasing the topic." }, 502);
+
+    // Add flashcards to the deck (dedup by front).
+    let added = 0;
+    for (const c of pack.flashcards) {
+      if (await db.cardExistsByFront(env, c.front)) continue;
+      const [fsrs, due] = newCardState();
+      await db.insertCard(env, {
+        front: c.front, back: c.back, kind: "flashcard",
+        deck: pack.topic_slug, tags: c.tags, fsrs, due,
+      });
+      added++;
+    }
+    // Replace any prior challenges for this topic, then store the new ones.
+    await db.deleteGenChallengesForSlug(env, pack.topic_slug);
+    for (const ch of pack.challenges) await db.insertGenChallenge(env, ch);
+    await db.upsertPack(env, {
+      topic: pack.topic, topic_slug: pack.topic_slug, labkit: pack.labkit,
+      card_count: pack.flashcards.length, challenge_count: pack.challenges.length,
+    });
+
+    return json({
+      topic: pack.topic, topic_slug: pack.topic_slug,
+      cards_added: added, flashcards: pack.flashcards.length,
+      challenges: pack.challenges.length, has_labkit: pack.labkit.length > 0,
+    }, 201);
+  }
+
+  if (path === "/ai/packs" && method === "GET") {
+    const packs = await db.listPacks(env);
+    const out = [];
+    for (const p of packs) {
+      const prog = await db.topicCardProgress(env, p.topic_slug);
+      out.push({ ...p, progress: prog });
+    }
+    return json(out);
+  }
+
+  if (seg[0] === "ai" && seg[1] === "packs" && seg.length === 3 && method === "GET") {
+    const slug = seg[2];
+    const pack = await db.getPack(env, slug);
+    if (!pack) return json({ error: "pack not found" }, 404);
+    const prog = await db.topicCardProgress(env, slug);
+    const solved = await db.solvedIds(env);
+    const challenges = (await db.genChallengesForSlug(env, slug)).map((c) =>
+      stripGen(c, solved.has(c.id))
+    );
+    // Practice is gated until the topic's flashcards are finished.
+    return json({ ...pack, progress: prog, unlocked: prog.done, challenges });
+  }
+
+  if (seg[0] === "ai" && seg[1] === "packs" && seg[3] === "labkit" && method === "GET") {
+    const pack = await db.getPack(env, seg[2]);
+    if (!pack) return json({ error: "pack not found" }, 404);
+    return new Response(pack.labkit || `# ${seg[2]}\n\n(no lab kit)`, {
+      headers: {
+        "Content-Type": "text/markdown; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${seg[2]}-labkit.md"`,
+        ...CORS,
+      },
+    });
+  }
+
+  if (seg[0] === "ai" && seg[1] === "challenges" && seg[3] === "submit" && method === "POST") {
+    const c = await db.getGenChallenge(env, seg[2]);
+    if (!c) return json({ error: "challenge not found" }, 404);
+    // Gate: the topic's flashcards must be finished first.
+    const prog = await db.topicCardProgress(env, c.topic_slug);
+    if (!prog.done)
+      return json({ error: "locked", message: "Finish this topic's flashcards first." }, 423);
+    const b = await body(request);
+    let sub = String(b.flag || "").trim().toLowerCase();
+    if (!sub) return json({ error: "flag required" }, 422);
+    if (!sub.startsWith("ctf{") && !sub.endsWith("}")) sub = `ctf{${sub}}`;
+    if (sub !== c.flag.toLowerCase()) return json({ correct: false });
+
+    const already = await db.isSolved(env, c.id);
+    await db.recordSolve(env, c.id, c.points);
+    return json({
+      correct: true, already_solved: already, points: c.points,
+      total_points: await db.totalPoints(env), solution: c.solution,
     });
   }
 

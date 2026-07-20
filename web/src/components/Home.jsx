@@ -31,11 +31,14 @@ export default function Home({ go, limits, openUpgrade }) {
           the puzzle actually sticks. The puzzles fuel the questions.
         </p>
         <div className="row gap wrap">
-          <button className="primary grow" onClick={() => go("puzzles")}>
+          <button className="primary grow" onClick={() => go("learn")}>
+            ✨ Learn a topic (AI)
+          </button>
+          <button className="grow" onClick={() => go("puzzles")}>
             🧩 Solve a challenge
           </button>
           <button className="grow" onClick={() => go("review")}>
-            🗂️ Review flashcards{dueCount ? ` (${dueCount} due)` : ""}
+            🗂️ Review{dueCount ? ` (${dueCount} due)` : ""}
           </button>
         </div>
       </div>

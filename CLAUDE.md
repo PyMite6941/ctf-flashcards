@@ -16,6 +16,10 @@ Three parts, **one shared backend** serves web + (via Capacitor) both mobile she
 
 Topic filtering: cards carry `tags`; `GET /topics` aggregates them with due-counts; `GET /review/queue?tag=` and `GET /cards?tag=` filter via `tags LIKE '%"tag"%'`.
 
+## Learn (AI topic packs) — Worker only so far
+
+`worker/src/aigen.js` calls **Groq** (`GROQ_API_KEY` secret; model `GROQ_MODEL` default `openai/gpt-oss-120b`, `reasoning_effort: low`) to generate a topic pack: flashcards + practice challenges + a markdown lab kit. **Solvability is guaranteed** — the model outputs a challenge `type` + `flag`; the Worker renders the artifact deterministically via `RENDERERS` (base64/rot13/caesar/hex/binary/xor/reverse) or `concept` (artifact = the question, flag = the answer). JSON parsing is tolerant (`extractJson` strips fences/prose — do NOT rely on `response_format`, gpt-oss support is uncertain). Flow: `POST /ai/generate {topic}` → flashcards into deck (tagged `topic:<slug>`, deck=`<slug>`) + challenges in `gen_challenges` D1 table + pack in `gen_packs`. Challenges are **gated**: `db.topicCardProgress` unlocks them only once every `topic:<slug>` card has FSRS `reps>=1` (all reviewed). Solves recorded in the shared `solves` table (points count). Endpoints: `/ai/packs`, `/ai/packs/:slug`, `/ai/packs/:slug/labkit` (downloadable md), `/ai/challenges/:id/submit`. Frontend: **Learn** tab (`web/src/components/Learn.jsx`). **DIVERGENCE:** the FastAPI twin (`backend/`) does NOT yet have the AI feature — sync it if parity is needed. A live interactive sandbox (real vuln box per topic) is intentionally out of scope (needs container infra).
+
 ## Billing / Pro tier (routes through GRID Store)
 
 Free tier = **3 puzzle solves/day** (`CTF_FREE_DAILY_SOLVES`), enforced server-side in `submit_flag`, keyed by client IP (`billing.client_identity`, uses `CF-Connecting-IP` in prod) in the `daily_usage` table. Only **new** captures count; re-solving a captured puzzle is free; Pro bypasses. Over the cap → HTTP **402** with an upgrade payload.

@@ -298,6 +298,12 @@ button.puzzle strong { font-size: 1.05rem; }
 .badge.cat-reversing { color: #fca5a5; border-color: #b91c1c; }
 .badge.cat-network   { color: #86efac; border-color: #15803d; }
 .badge.cat-misc      { color: #c4b5fd; border-color: #6d28d9; }
+.badge.cat-ai        { color: #67e8f9; border-color: #0e7490; }
+
+/* AI topic pack progress bar */
+.progress-wrap { display: flex; flex-direction: column; gap: 4px; }
+.progress-track { height: 7px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #22c55e); transition: width 0.3s; }
 
 /* puzzle solve view */
 .link {

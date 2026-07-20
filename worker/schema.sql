@@ -40,3 +40,30 @@ CREATE TABLE IF NOT EXISTS daily_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_cards_due    ON cards(due);
 CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox(status);
+
+-- AI-generated topic packs + practice challenges
+CREATE TABLE IF NOT EXISTS gen_packs (
+    id              TEXT PRIMARY KEY,
+    topic           TEXT NOT NULL,
+    topic_slug      TEXT NOT NULL UNIQUE,
+    labkit          TEXT NOT NULL DEFAULT '',
+    card_count      INTEGER NOT NULL DEFAULT 0,
+    challenge_count INTEGER NOT NULL DEFAULT 0,
+    created_at      REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS gen_challenges (
+    id             TEXT PRIMARY KEY,
+    topic_slug     TEXT NOT NULL,
+    title          TEXT NOT NULL,
+    category       TEXT NOT NULL DEFAULT 'ai',
+    difficulty     TEXT NOT NULL,
+    points         INTEGER NOT NULL,
+    description    TEXT NOT NULL,
+    hint           TEXT NOT NULL,
+    artifact       TEXT NOT NULL,
+    flag           TEXT NOT NULL,
+    solution       TEXT NOT NULL,
+    challenge_type TEXT NOT NULL,
+    created_at     REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gen_challenges_slug ON gen_challenges(topic_slug);
