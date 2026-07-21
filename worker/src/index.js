@@ -135,7 +135,7 @@ async function route(request, env) {
   // ---- limits ----
   if (path === "/limits" && method === "GET") {
     const ent = await billing.verifyLicense(env, license);
-    const identity = billing.clientIdentity(request);
+    const identity = await billing.resolveIdentity(env, request);
     const used = await db.solvesToday(env, billing.today(), identity);
     const cap = billing.freeDailySolves(env);
     const aiUsed = await db.aiGensThisMonth(env, billing.thisMonth(), identity);
@@ -183,7 +183,7 @@ async function route(request, env) {
     if (!already) {
       const ent = await billing.verifyLicense(env, license);
       if (!ent.pro) {
-        const identity = billing.clientIdentity(request);
+        const identity = await billing.resolveIdentity(env, request);
         const used = await db.solvesToday(env, billing.today(), identity);
         const cap = billing.freeDailySolves(env);
         if (used >= cap) {
@@ -227,7 +227,7 @@ async function route(request, env) {
 
     // Free tier: cap AI generations per month. Pro = unlimited.
     const gEnt = await billing.verifyLicense(env, license);
-    const gIdentity = billing.clientIdentity(request);
+    const gIdentity = await billing.resolveIdentity(env, request);
     const gMonth = billing.thisMonth();
     if (!gEnt.pro) {
       const used = await db.aiGensThisMonth(env, gMonth, gIdentity);

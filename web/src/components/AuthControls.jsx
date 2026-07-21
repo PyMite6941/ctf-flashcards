@@ -1,4 +1,4 @@
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/react";
 
 // Header auth surface. Only rendered when Clerk is configured (see App.jsx), so
 // these Clerk components are always inside a ClerkProvider. The UserButton's
@@ -6,14 +6,17 @@ import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-reac
 export default function AuthControls() {
   return (
     <>
-      <SignedOut>
+      <Show when="signed-out">
         <SignInButton mode="modal">
           <button className="signin-btn">Sign in</button>
         </SignInButton>
-      </SignedOut>
-      <SignedIn>
+        <SignUpButton mode="modal">
+          <button className="free-chip">Sign up</button>
+        </SignUpButton>
+      </Show>
+      <Show when="signed-in">
         <UserButton afterSignOutUrl="/" />
-      </SignedIn>
+      </Show>
     </>
   );
 }

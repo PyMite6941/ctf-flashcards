@@ -7,6 +7,7 @@ import Learn from "./components/Learn.jsx";
 import AddCard from "./components/AddCard.jsx";
 import Inbox from "./components/Inbox.jsx";
 import AuthControls from "./components/AuthControls.jsx";
+import ClerkTokenBridge from "./components/ClerkTokenBridge.jsx";
 import UpgradeModal from "./components/UpgradeModal.jsx";
 import { hasClerk } from "./lib/clerk.js";
 
@@ -48,6 +49,8 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Signed-in session → per-account metering; also re-fetch quotas on sign in/out. */}
+      {hasClerk && <ClerkTokenBridge onAuthChange={bump} />}
       <header>
         <div>
           <h1>CTF Flashcards</h1>

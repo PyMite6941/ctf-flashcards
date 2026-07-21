@@ -5,13 +5,29 @@ import { getLicense } from "./license.js";
 
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+// Optional Clerk session-token provider — registered by ClerkTokenBridge when a
+// user is signed in, so the backend can meter per-account instead of per-IP.
+let tokenGetter = null;
+export function setTokenGetter(fn) {
+  tokenGetter = fn;
+}
+
 async function req(path, options = {}) {
   const license = getLicense();
+  let clerkToken = null;
+  if (tokenGetter) {
+    try {
+      clerkToken = await tokenGetter();
+    } catch {
+      clerkToken = null;
+    }
+  }
   const res = await fetch(BASE + path, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       ...(license ? { "X-License": license } : {}),
+      ...(clerkToken ? { "X-Clerk-Token": clerkToken } : {}),
       ...(options.headers || {}),
     },
   });

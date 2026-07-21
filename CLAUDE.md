@@ -22,7 +22,7 @@ Topic filtering: cards carry `tags`; `GET /topics` aggregates them with due-coun
 
 ## Billing / Pro tier (routes through GRID Store)
 
-Free tier = **3 puzzle solves/day** (`CTF_FREE_DAILY_SOLVES`) + **9 AI generations/month** (`CTF_FREE_MONTHLY_AI_GENS`), enforced server-side keyed by client IP (`billing.client_identity`, uses `CF-Connecting-IP` in prod). Solves: `daily_usage` table, only **new** captures count, re-solving free. AI gens: `monthly_ai` table (`month`='YYYY-MM'), bumped only on a **successful** `/ai/generate`. Pro bypasses both. Over either cap → HTTP **402** with an upgrade payload. Both quotas surface in `GET /limits` (`solves_remaining`, `ai_gens_remaining`).
+Free tier = **3 puzzle solves/day** (`CTF_FREE_DAILY_SOLVES`) + **9 AI generations/month** (`CTF_FREE_MONTHLY_AI_GENS`), enforced server-side keyed by client IP (`billing.client_identity`, uses `CF-Connecting-IP` in prod). Solves: `daily_usage` table, only **new** captures count, re-solving free. AI gens: `monthly_ai` table (`month`='YYYY-MM'), bumped only on a **successful** `/ai/generate`. Pro bypasses both. Over either cap → HTTP **402** with an upgrade payload. Both quotas surface in `GET /limits` (`solves_remaining`, `ai_gens_remaining`). Metering identity comes from `billing.resolveIdentity` (Clerk user when signed in, else IP — see the Clerk section).
 
 **Pro = $8/mo = 8 USDC / 31 days**, sold through the existing **GRID Store** infra — NOT a separate payment system. `portfolio/store/web-store/worker/index.js` got a new `ctf_pro` tier (8 USDC, 31 days, additive — deploy with `wrangler deploy`). In-page checkout `web/src/components/UpgradeModal.jsx` (ported from the store's `CryptoModal`) pays USDC-on-Base to the store wallet → calls the **same worker `/redeem`** → license recorded in the same Supabase `licenses` table. The license JWT is stored in localStorage (`web/src/lib/license.js`), sent as `X-License` header; backend verifies it via the worker's **`/verify`** (`app/billing.py`) — no shared secret on the CTF side. Crypto can't auto-charge, so "monthly" = renewable 31-day license. Deploy/hosting: see `DEPLOYMENT.md`.
 
@@ -34,9 +34,11 @@ Free tier = **3 puzzle solves/day** (`CTF_FREE_DAILY_SOLVES`) + **9 AI generatio
 
 `backend/` (FastAPI) is retained as the local-dev twin; production is the Worker.
 
-## Accounts (Clerk — optional, frontend-only)
+## Accounts (Clerk — LIVE, per-user metering)
 
-Clerk sign-in is **gated behind `VITE_CLERK_PUBLISHABLE_KEY`** (set in `web/.env.local`). `src/lib/clerk.js` exports `hasClerk`; `main.jsx` mounts `<ClerkProvider>` only when a key exists, else renders `<App>` bare (zero-key demo mode — the app must always run without a key). `src/components/AuthControls.jsx` (SignInButton / UserButton) is rendered in the header **only when `hasClerk`** — never call Clerk hooks/components outside the provider. Scope is **sign-in UI only, shared deck** — backend + DB are untouched, no per-user data. Per-user decks (add `user_id` + verify Clerk JWT server-side) is a deliberate future upgrade. Never hardcode the key; `.env.local` is gitignored.
+Clerk is **on in production** (linked via `clerk init` to app `app_3GnMdIsx2sLDaszljo1kiTfrwTC`, **development instance** `feasible-bream-93.clerk.accounts.dev` — a production instance is NOT yet configured; that's the launch TODO). Uses **`@clerk/react`** (v6, migrated off `@clerk/clerk-react`; conditional rendering is `<Show when="signed-in|signed-out">`, not `<SignedIn>`). Still gated behind `VITE_CLERK_PUBLISHABLE_KEY`: `src/lib/clerk.js` exports `hasClerk`; `main.jsx` mounts `<ClerkProvider>` only when the key exists (else bare `<App>` — zero-key mode still supported). The **publishable** key lives in `.env.production` (committed, it's public) + `.env.local` (dev). **`CLERK_SECRET_KEY` is only in gitignored `.env.local` — never commit it.**
+
+**Per-user metering:** `src/components/ClerkTokenBridge.jsx` registers a token getter into `api.js` (`setTokenGetter`) while signed in, so every request carries `X-Clerk-Token` (the Clerk session JWT). The Worker's `clerkauth.js` verifies it (RS256 via the instance JWKS, issuer pinned to `*.clerk.accounts.dev` or `CLERK_ISSUER`); `billing.resolveIdentity(env, request)` returns `user:<sub>` when valid, else the client IP. So the daily-solve and monthly-AI quotas are **per-account when signed in, per-IP when anonymous**. Deck is still shared (no per-user data isolation yet).
 
 ## Run
 

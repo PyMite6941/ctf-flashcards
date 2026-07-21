@@ -2,6 +2,8 @@
 // Same idea as app/billing.py: free users get a daily cap; a valid ctf_pro
 // license (checked via the store worker's /verify) lifts it.
 
+import { verifyClerkToken } from "./clerkauth.js";
+
 const PRO_TIERS = new Set(["ctf_pro"]);
 const CACHE_TTL_MS = 300_000;
 const cache = new Map();
@@ -26,6 +28,18 @@ export function clientIdentity(request) {
     (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() ||
     "unknown"
   );
+}
+
+// Metering identity: the signed-in Clerk user if a valid session token is sent
+// (X-Clerk-Token), otherwise the client IP. So quotas are per-account when signed
+// in and per-IP for anonymous visitors.
+export async function resolveIdentity(env, request) {
+  const token = request.headers.get("x-clerk-token");
+  if (token) {
+    const sub = await verifyClerkToken(env, token);
+    if (sub) return `user:${sub}`;
+  }
+  return clientIdentity(request);
 }
 
 export async function verifyLicense(env, token) {

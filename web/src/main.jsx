@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { ClerkProvider } from "@clerk/clerk-react";
+import { ClerkProvider } from "@clerk/react";
 import App from "./App.jsx";
 import { CLERK_KEY, hasClerk } from "./lib/clerk.js";
 import "./styles.css";
