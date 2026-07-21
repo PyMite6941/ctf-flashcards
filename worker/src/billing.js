@@ -7,11 +7,16 @@ const CACHE_TTL_MS = 300_000;
 const cache = new Map();
 
 export const freeDailySolves = (env) => parseInt(env.CTF_FREE_DAILY_SOLVES || "3", 10);
+export const freeMonthlyAiGens = (env) => parseInt(env.CTF_FREE_MONTHLY_AI_GENS || "9", 10);
 const workerUrl = (env) =>
   env.GRID_STORE_WORKER_URL || "https://grid-store-worker.greshamd27.workers.dev";
 
 export function today() {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+}
+
+export function thisMonth() {
+  return new Date().toISOString().slice(0, 7); // YYYY-MM (UTC)
 }
 
 // Cloudflare gives us the real client IP for free.

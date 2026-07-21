@@ -3,12 +3,16 @@ import { api, DIFFICULTY_COLOR } from "../lib/api.js";
 
 // AI tutor: name a topic → Groq generates flashcards (into the deck) + practice
 // challenges (locked until you've reviewed the flashcards) + a downloadable lab.
-export default function Learn({ go, onGenerated }) {
+export default function Learn({ go, onGenerated, limits, openUpgrade }) {
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [packs, setPacks] = useState(null);
   const [selected, setSelected] = useState(null);
+
+  const pro = limits?.pro;
+  const gensLeft = limits?.ai_gens_remaining;
+  const outOfGens = !pro && gensLeft === 0;
 
   async function load() {
     setPacks(await api.listPacks());
@@ -29,7 +33,12 @@ export default function Learn({ go, onGenerated }) {
       setSelected(r.topic_slug);
       onGenerated?.();
     } catch (err) {
-      setError(err.body?.error || err.message || "Generation failed.");
+      if (err.status === 402) {
+        setError(err.body?.detail?.message || "Monthly AI limit reached — upgrade to Pro for unlimited.");
+        openUpgrade?.();
+      } else {
+        setError(err.body?.error || err.message || "Generation failed.");
+      }
     } finally {
       setBusy(false);
     }
@@ -53,12 +62,23 @@ export default function Learn({ go, onGenerated }) {
             placeholder="e.g. SQL injection, JWT attacks, buffer overflows, XSS…"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            disabled={busy}
+            disabled={busy || outOfGens}
           />
-          <button className="primary" disabled={busy || !topic.trim()}>
+          <button className="primary" disabled={busy || outOfGens || !topic.trim()}>
             {busy ? "Generating…" : "✨ Generate"}
           </button>
         </div>
+        {limits && (
+          pro ? (
+            <span className="pro-chip" style={{ alignSelf: "flex-start" }}>★ Pro · unlimited AI</span>
+          ) : outOfGens ? (
+            <button className="free-chip" onClick={openUpgrade}>
+              Monthly AI limit reached ({limits.ai_gens_limit}/mo) · Upgrade to Pro
+            </button>
+          ) : (
+            <span className="muted small">{gensLeft}/{limits.ai_gens_limit} free AI generations left this month</span>
+          )
+        )}
         {busy && <p className="muted small">Asking the model for flashcards + challenges… (a few seconds)</p>}
         {error && <p className="wrong-msg">{error}</p>}
       </form>

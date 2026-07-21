@@ -67,3 +67,11 @@ CREATE TABLE IF NOT EXISTS gen_challenges (
     created_at     REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gen_challenges_slug ON gen_challenges(topic_slug);
+
+-- Free-tier AI metering: generations per identity per UTC month (Pro = unlimited)
+CREATE TABLE IF NOT EXISTS monthly_ai (
+    month     TEXT NOT NULL,   -- 'YYYY-MM' UTC
+    identity  TEXT NOT NULL,
+    gens      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (month, identity)
+);

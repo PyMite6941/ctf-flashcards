@@ -135,13 +135,19 @@ async function route(request, env) {
   // ---- limits ----
   if (path === "/limits" && method === "GET") {
     const ent = await billing.verifyLicense(env, license);
-    const used = await db.solvesToday(env, billing.today(), billing.clientIdentity(request));
+    const identity = billing.clientIdentity(request);
+    const used = await db.solvesToday(env, billing.today(), identity);
     const cap = billing.freeDailySolves(env);
+    const aiUsed = await db.aiGensThisMonth(env, billing.thisMonth(), identity);
+    const aiCap = billing.freeMonthlyAiGens(env);
     return json({
       pro: ent.pro, tier: ent.tier,
       daily_solve_limit: cap,
       solves_used_today: used,
       solves_remaining: ent.pro ? null : Math.max(0, cap - used),
+      ai_gens_limit: aiCap,
+      ai_gens_used_this_month: aiUsed,
+      ai_gens_remaining: ent.pro ? null : Math.max(0, aiCap - aiUsed),
       price_usdc: 8, tier_id: "ctf_pro",
     });
   }
@@ -219,6 +225,24 @@ async function route(request, env) {
     if (!topic) return json({ error: "topic required" }, 422);
     if (topic.length > 120) return json({ error: "topic too long" }, 422);
 
+    // Free tier: cap AI generations per month. Pro = unlimited.
+    const gEnt = await billing.verifyLicense(env, license);
+    const gIdentity = billing.clientIdentity(request);
+    const gMonth = billing.thisMonth();
+    if (!gEnt.pro) {
+      const used = await db.aiGensThisMonth(env, gMonth, gIdentity);
+      const cap = billing.freeMonthlyAiGens(env);
+      if (used >= cap) {
+        return json({
+          detail: {
+            error: "ai_limit_reached",
+            message: `Free tier is ${cap} AI generations per month. Upgrade to Pro ($8/mo) for unlimited.`,
+            ai_gens_limit: cap, tier_id: "ctf_pro", price_usdc: 8,
+          },
+        }, 402);
+      }
+    }
+
     let pack;
     try {
       pack = await aigen.generatePack(env, topic);
@@ -246,6 +270,9 @@ async function route(request, env) {
       topic: pack.topic, topic_slug: pack.topic_slug, labkit: pack.labkit,
       card_count: pack.flashcards.length, challenge_count: pack.challenges.length,
     });
+
+    // Count the generation against the free monthly quota (only on success).
+    if (!gEnt.pro) await db.bumpAiGens(env, gMonth, gIdentity);
 
     return json({
       topic: pack.topic, topic_slug: pack.topic_slug,

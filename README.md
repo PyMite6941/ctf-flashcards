@@ -7,7 +7,7 @@ A cybersecurity **active-recall** learning app, built for RevenueCat's **Shipato
 > Built from `ctf-flashcards-shipaton-plan.md`. See that plan for the full hackathon rationale.
 
 **🌐 Live** (all Cloudflare): app → https://ctf-flashcards.pages.dev · API → https://ctf-flashcards-api.greshamd27.workers.dev
-Free tier = 3 puzzle solves/day; **Pro = $8/mo** (8 USDC on Base) via [GRID Store](https://grid-store.pages.dev). See `DEPLOYMENT.md`.
+Free tier = 3 puzzle solves/day + 9 AI generations/month; **Pro = $8/mo** (8 USDC on Base) = unlimited, via [GRID Store](https://grid-store.pages.dev). See `DEPLOYMENT.md`.
 
 ---
 

@@ -96,7 +96,7 @@ export default function App() {
 
       <main>
         {tab === "home" && <Home key={`h${refresh}`} go={setTab} limits={limits} openUpgrade={openUpgrade} />}
-        {tab === "learn" && <Learn go={setTab} onGenerated={bump} />}
+        {tab === "learn" && <Learn go={setTab} onGenerated={bump} limits={limits} openUpgrade={openUpgrade} />}
         {tab === "review" && <ReviewSession key={`r${refresh}`} />}
         {/* stable key: solving refreshes header stats via onSolved without
             remounting (which would kick the user out of the solve view). */}

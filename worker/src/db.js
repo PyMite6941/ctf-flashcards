@@ -167,6 +167,19 @@ export async function bumpSolvesToday(env, day, identity) {
   return r.solves;
 }
 
+export async function aiGensThisMonth(env, month, identity) {
+  const r = await env.DB.prepare("SELECT gens FROM monthly_ai WHERE month = ? AND identity = ?")
+    .bind(month, identity).first();
+  return r ? r.gens : 0;
+}
+
+export async function bumpAiGens(env, month, identity) {
+  await env.DB.prepare(
+    "INSERT INTO monthly_ai (month, identity, gens) VALUES (?, ?, 1) " +
+      "ON CONFLICT(month, identity) DO UPDATE SET gens = gens + 1"
+  ).bind(month, identity).run();
+}
+
 // ---------- AI topic packs ----------
 
 export async function upsertPack(env, { topic, topic_slug, labkit, card_count, challenge_count }) {
