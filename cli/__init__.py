@@ -9,8 +9,9 @@ Usage:
 """
 
 from .tracker import (
-    capture_command, list_unadded, list_commands, get_command,
-    mark_added, stats, init_db, CommandRecord,
+    capture_command, list_unadded, list_commands, list_failed_unfixed,
+    get_command, get_error_text, mark_added, mark_fixed, stats, init_db,
+    CommandRecord, recent,
 )
 from .researcher import research, generate_card
 from .notify import notify_failed, check_and_notify, pending_count, desktop_notify
@@ -19,13 +20,16 @@ from .study import (
     start_session, end_session, cards_for_review, StudyCard, DEPTHS,
 )
 from .ai_connector import is_configured, explain_command, generate_quiz_item
+from .error_analyzer import analyze_error, analyze_and_fix, print_analysis, review_all_failed
 
 __all__ = [
-    "capture_command", "list_unadded", "list_commands", "get_command",
-    "mark_added", "stats", "init_db", "CommandRecord",
+    "capture_command", "list_unadded", "list_commands", "list_failed_unfixed",
+    "get_command", "get_error_text", "mark_added", "mark_fixed",
+    "stats", "init_db", "CommandRecord", "recent",
     "research", "generate_card",
     "notify_failed", "check_and_notify", "pending_count", "desktop_notify",
     "add_card_from_command", "add_card_manual", "list_cards", "update_rep",
     "start_session", "end_session", "cards_for_review", "StudyCard", "DEPTHS",
     "is_configured", "explain_command", "generate_quiz_item",
+    "analyze_error", "analyze_and_fix", "print_analysis", "review_all_failed",
 ]

@@ -1,10 +1,14 @@
-"""CTF Command Tracker — offline command capture, research, and study.
+"""Terminal command tracker — unlimited line-by-line capture.
 
-Captures commands typed in your terminal (via shell integration), checks them
-against local man pages / which, notifies you on failures so you can add them
-to a study deck, and lets you study via flashcards, quizzes, tests, and games.
+Captures *anything* typed or pasted into a terminal (no whitelist, no limits):
+every command line, every exit code, every error. Works with any shell tool
+(Claude Code, Qwen Code, Hydra, git, nmap, custom scripts…).
 
-Designed to work fully offline. An AI agent connector is optional.
+On a failed command it asks whether you want to:
+  - add it to the study deck, or
+  - analyze/fix the error (local man-page + --help research, no AI required).
+
+Everything is stored locally in SQLite. No server, no network required.
 """
 
 from __future__ import annotations
@@ -13,10 +17,8 @@ import json
 import os
 import shlex
 import sqlite3
-import subprocess
-import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -28,14 +30,16 @@ DB_PATH = os.environ.get(
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS commands (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    raw           TEXT NOT NULL,           -- full command line as typed
-    argv0         TEXT NOT NULL,           -- first token (the command)
+    raw           TEXT NOT NULL,           -- full command line as typed/pasted
+    argv0         TEXT NOT NULL DEFAULT '',-- first token (the command/tool)
     args          TEXT NOT NULL DEFAULT '[]',
     exit_code     INTEGER NOT NULL,
-    ok            INTEGER NOT NULL DEFAULT 0,   -- 1 if exit 0 and command exists
-    added         INTEGER NOT NULL DEFAULT 0,   -- 1 if added to study deck
-    depth         TEXT NOT NULL DEFAULT 'medium',
-    source        TEXT NOT NULL DEFAULT 'shell',-- 'shell' | 'manual' | 'research'
+    ok            INTEGER NOT NULL DEFAULT 0,          -- 1 if exit 0
+    found         INTEGER NOT NULL DEFAULT 1,          -- 1 if command exists on PATH/builtin
+    added         INTEGER NOT NULL DEFAULT 0,          -- 1 if added to study deck
+    fixed         INTEGER NOT NULL DEFAULT 0,          -- 1 if user fixed the error
+    depth         TEXT NOT NULL DEFAULT 'medium',      -- shallow | medium | deep
+    source        TEXT NOT NULL DEFAULT 'shell',       -- shell | manual | paste | monitor
     created_at    REAL NOT NULL,
     updated_at    REAL NOT NULL
 );
@@ -54,9 +58,20 @@ CREATE TABLE IF NOT EXISTS command_cards (
     FOREIGN KEY (command_id) REFERENCES commands(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS error_fixes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    command_id    INTEGER NOT NULL,
+    error_text    TEXT NOT NULL,          -- stderr / failure output
+    fix_attempted INTEGER NOT NULL DEFAULT 0,
+    fix_success   INTEGER NOT NULL DEFAULT 0,
+    notes         TEXT NOT NULL DEFAULT '',
+    created_at    REAL NOT NULL,
+    FOREIGN KEY (command_id) REFERENCES commands(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS study_sessions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    mode          TEXT NOT NULL,           -- 'flashcard' | 'quiz' | 'test' | 'game'
+    mode          TEXT NOT NULL,           -- flashcard | quiz | test | game
     started_at    REAL NOT NULL,
     ended_at      REAL,
     score         INTEGER DEFAULT 0,
@@ -73,6 +88,12 @@ CREATE TABLE IF NOT EXISTS study_results (
     FOREIGN KEY (session_id) REFERENCES study_sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (card_id) REFERENCES command_cards(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_commands_created ON commands(created_at);
+CREATE INDEX IF NOT EXISTS idx_commands_ok ON commands(ok);
+CREATE INDEX IF NOT EXISTS idx_commands_added ON commands(added);
+CREATE INDEX IF NOT EXISTS idx_cc_due ON command_cards(due);
+CREATE INDEX IF NOT EXISTS idx_cc_depth ON command_cards(depth);
 """
 
 
@@ -84,7 +105,9 @@ class CommandRecord:
     args: list[str]
     exit_code: int
     ok: bool
+    found: bool
     added: bool
+    fixed: bool
     depth: str
     source: str
     created_at: float
@@ -99,18 +122,24 @@ now = _now
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
-        # Migration: add 'command' column to command_cards if missing.
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(command_cards)").fetchall()}
-        if "command" not in cols:
+        # Migration for older schemas: ensure 'found' and 'fixed' columns exist.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(commands)").fetchall()}
+        if "found" not in cols:
+            conn.execute("ALTER TABLE commands ADD COLUMN found INTEGER NOT NULL DEFAULT 1")
+        if "fixed" not in cols:
+            conn.execute("ALTER TABLE commands ADD COLUMN fixed INTEGER NOT NULL DEFAULT 0")
+        cc_cols = {r["name"] for r in conn.execute("PRAGMA table_info(command_cards)").fetchall()}
+        if "command" not in cc_cols:
             conn.execute("ALTER TABLE command_cards ADD COLUMN command TEXT NOT NULL DEFAULT ''")
 
 
@@ -119,49 +148,54 @@ def capture_command(
     exit_code: int = 0,
     source: str = "shell",
     depth: str = "medium",
+    stderr: str = "",
 ) -> CommandRecord:
-    """Record a command that was typed in the terminal.
+    """Record *any* command line that was typed/pasted into a terminal.
 
-    Determines 'ok' by checking whether argv0 resolves to an existing
-    executable or shell builtin, and whether exit_code == 0.
+    No restrictions on what can be captured — argv0 is just the first token.
+    'ok' is True only if exit_code == 0 AND the command exists.
     """
-    tokens = shlex.split(raw) if raw.strip() else []
+    tokens = shlex.split(raw) if raw and raw.strip() else []
     argv0 = tokens[0] if tokens else ""
     args = tokens[1:]
 
-    ok = _command_exists(argv0) and exit_code == 0
+    found = _command_found(argv0)
+    ok = (exit_code == 0) and found
 
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO commands (raw, argv0, args, exit_code, ok, added, depth, source, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,0,?,?,?,?)",
-            (raw, argv0, json.dumps(args), exit_code, 1 if ok else 0, depth, source, _now(), _now()),
+            "INSERT INTO commands (raw, argv0, args, exit_code, ok, found, added, fixed, depth, source, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,0,0,?,?,?,?,?)",
+            (raw, argv0, json.dumps(args), exit_code, 1 if ok else 0, 1 if found else 0,
+             depth, source, _now(), _now()),
         )
         cid = cur.lastrowid
+        # If it failed, record an error slot so the UI can ask to fix it.
+        if not ok and stderr:
+            conn.execute(
+                "INSERT INTO error_fixes (command_id, error_text, fix_attempted, fix_success, notes, created_at) "
+                "VALUES (?,?,0,0,'',?)",
+                (cid, stderr[:4000], _now()),
+            )
         row = conn.execute("SELECT * FROM commands WHERE id = ?", (cid,)).fetchone()
     return _row_to_command(row)
 
 
-def _command_exists(cmd: str) -> bool:
+def _command_found(cmd: str) -> bool:
+    """Check whether a command resolves to a PATH executable or shell builtin."""
     if not cmd:
         return False
-    # Shell builtins
     builtins = {
         "cd", "pwd", "export", "unset", "alias", "unalias", "source", "exit",
         "history", "jobs", "fg", "bg", "kill", "wait", "type", "help", "true",
         "false", "echo", "printf", "read", "test", "[", "eval", "exec", "set",
-        "shift", "trap", "umask", "alias",
+        "shift", "trap", "umask", "alias", "dirs", "pushd", "popd", "disown",
+        "command", "builtin",
     }
     if cmd in builtins:
         return True
-    return shutil_which(cmd) is not None
-
-
-def shutil_which(cmd: str) -> Optional[str]:
-    # Avoid importing shutil at module top for minimal footprint
     import shutil
-
-    return shutil.which(cmd)
+    return shutil.which(cmd) is not None
 
 
 def _row_to_command(row: sqlite3.Row) -> CommandRecord:
@@ -172,7 +206,9 @@ def _row_to_command(row: sqlite3.Row) -> CommandRecord:
         args=json.loads(row["args"]),
         exit_code=row["exit_code"],
         ok=bool(row["ok"]),
+        found=bool(row["found"]),
         added=bool(row["added"]),
+        fixed=bool(row["fixed"]),
         depth=row["depth"],
         source=row["source"],
         created_at=row["created_at"],
@@ -195,6 +231,41 @@ def mark_added(command_id: int, depth: str = "medium") -> None:
             "UPDATE commands SET added = 1, depth = ?, updated_at = ? WHERE id = ?",
             (depth, _now(), command_id),
         )
+
+
+def list_failed_unfixed(limit: int = 50) -> list[CommandRecord]:
+    """Commands that failed and haven't been fixed yet, newest first."""
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT c.* FROM commands c
+               JOIN error_fixes e ON e.command_id = c.id
+               WHERE c.ok = 0 AND e.fix_success = 0
+               ORDER BY c.created_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [_row_to_command(r) for r in rows]
+
+
+def mark_fixed(command_id: int, success: bool = True, notes: str = "") -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE commands SET fixed = 1, updated_at = ? WHERE id = ?",
+            (_now(), command_id),
+        )
+        conn.execute(
+            "UPDATE error_fixes SET fix_attempted = 1, fix_success = ?, notes = ?, created_at = ? "
+            "WHERE command_id = ? AND fix_success = 0",
+            (1 if success else 0, notes, _now(), command_id),
+        )
+
+
+def get_error_text(command_id: int) -> Optional[str]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT error_text FROM error_fixes WHERE command_id = ? AND fix_success = 0 ORDER BY created_at DESC LIMIT 1",
+            (command_id,),
+        ).fetchone()
+    return row["error_text"] if row else None
 
 
 def list_commands(added_only: bool = True, limit: int = 100) -> list[CommandRecord]:
@@ -221,12 +292,27 @@ def stats() -> dict[str, Any]:
         added = conn.execute("SELECT COUNT(*) FROM commands WHERE added = 1").fetchone()[0]
         unadded = conn.execute("SELECT COUNT(*) FROM commands WHERE added = 0").fetchone()[0]
         failed = conn.execute("SELECT COUNT(*) FROM commands WHERE ok = 0").fetchone()[0]
+        unfixed = conn.execute(
+            "SELECT COUNT(*) FROM commands c JOIN error_fixes e ON e.command_id=c.id "
+            "WHERE c.ok=0 AND e.fix_success=0"
+        ).fetchone()[0]
+        fixed = conn.execute("SELECT COUNT(*) FROM commands WHERE fixed = 1").fetchone()[0]
     return {
         "total": total,
         "added": added,
         "unadded": unadded,
         "failed": failed,
+        "unfixed": unfixed,
+        "fixed": fixed,
     }
+
+
+def recent(limit: int = 30) -> list[CommandRecord]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM commands ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [_row_to_command(r) for r in rows]
 
 
 if __name__ == "__main__":
@@ -237,8 +323,9 @@ if __name__ == "__main__":
 
     sub.add_parser("init", help="initialize the local database")
     sub.add_parser("stats", help="show command stats")
-    sub.add_parser("pending", help="list commands not yet added to study deck")
-    sub.add_parser("list", help="list tracked commands")
+    sub.add_parser("recent", help="show recent commands").add_argument("--limit", type=int, default=30)
+    sub.add_parser("pending", help="list commands not yet added to study deck").add_argument("--limit", type=int, default=50)
+    sub.add_parser("failed", help="list failed commands not yet fixed").add_argument("--limit", type=int, default=50)
 
     args = parser.parse_args()
     init_db()
@@ -246,13 +333,21 @@ if __name__ == "__main__":
     if args.cmd == "init":
         print(f"Database initialized at {DB_PATH}")
     elif args.cmd == "stats":
-        s = stats()
-        print(json.dumps(s, indent=2))
+        print(json.dumps(stats(), indent=2))
+    elif args.cmd == "recent":
+        for c in recent(args.limit):
+            flag = "OK " if c.ok else "FAIL"
+            found = "" if c.found else " [not found]"
+            print(f"[{c.id}] [{flag}{found}] {c.raw}")
     elif args.cmd == "pending":
-        for c in list_unadded():
-            print(f"[{c.id}] {c.raw}  (ok={c.ok}, depth={c.depth})")
-    elif args.cmd == "list":
-        for c in list_commands():
-            print(f"[{c.id}] {c.raw}  (ok={c.ok}, added={c.added})")
+        for c in list_unadded(args.limit):
+            flag = "OK " if c.ok else "FAIL"
+            print(f"[{c.id}] [{flag}] {c.raw}  (depth={c.depth})")
+    elif args.cmd == "failed":
+        for c in list_failed_unfixed(args.limit):
+            err = get_error_text(c.id)
+            print(f"[{c.id}] [FAIL] {c.raw}")
+            if err:
+                print(f"      error: {err[:200]}")
     else:
         parser.print_help()

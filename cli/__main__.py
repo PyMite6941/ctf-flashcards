@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .tracker import init_db, stats, list_unadded, list_commands, capture_command, DB_PATH
+from .tracker import (
+    init_db, stats, list_unadded, list_commands, list_failed_unfixed,
+    get_error_text, capture_command, DB_PATH,
+)
 from .notify import check_and_notify, pending_count
 from .researcher import generate_card
 from .study import add_card_from_command, list_cards
@@ -13,10 +16,17 @@ from .study import add_card_from_command, list_cards
 
 def _cmd_capture(args: argparse.Namespace) -> int:
     init_db()
-    rec = capture_command(args.raw, exit_code=args.exit_code, source=args.source)
+    rec = capture_command(
+        args.raw,
+        exit_code=args.exit_code,
+        source=args.source,
+        stderr=args.stderr,
+    )
     print(f"Captured [{rec.id}] {rec.raw} (ok={rec.ok})")
     if not rec.ok:
-        print("  -> command failed or not found. Add to study deck?")
+        print("  -> command failed or not found.")
+        print("  -> Add to study deck:  python -m cli add <id> [--depth shallow|medium|deep]")
+        print("  -> Fix the error:      python -m cli fix <id>")
     return 0
 
 
@@ -137,6 +147,28 @@ def _cmd_cards(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_failed(args: argparse.Namespace) -> int:
+    init_db()
+    items = list_failed_unfixed(limit=args.limit)
+    if not items:
+        print("No failed commands awaiting a fix.")
+        return 0
+    for c in items:
+        err = get_error_text(c.id)
+        print(f"[{c.id}] [FAIL] {c.raw}")
+        if err:
+            print(f"      error: {err[:200]}")
+    print(f"\n{len(items)} failed command(s). Fix one:  python -m cli fix <id>")
+    return 0
+
+
+def _cmd_fix(args: argparse.Namespace) -> int:
+    init_db()
+    from .error_analyzer import analyze_and_fix
+    analyze_and_fix(args.id)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ctf", description="CTF Flashcards CLI")
     sub = parser.add_subparsers(dest="cmd")
@@ -148,9 +180,16 @@ def main(argv: list[str] | None = None) -> int:
     p_cap.add_argument("raw")
     p_cap.add_argument("--exit-code", type=int, default=0)
     p_cap.add_argument("--source", default="shell")
+    p_cap.add_argument("--stderr", default="", help="stderr / error output if the command failed")
 
     sub.add_parser("pending", help="list commands not yet in study deck").add_argument(
         "--limit", type=int, default=50)
+
+    p_failed = sub.add_parser("failed", help="list failed commands not yet fixed")
+    p_failed.add_argument("--limit", type=int, default=50)
+
+    p_fix = sub.add_parser("fix", help="analyze and fix a failed command")
+    p_fix.add_argument("id", type=int)
 
     p_add = sub.add_parser("add", help="add a captured command to study deck")
     p_add.add_argument("id", type=int)
@@ -180,6 +219,8 @@ def main(argv: list[str] | None = None) -> int:
         "stats": _cmd_stats,
         "pending": _cmd_pending,
         "capture": _cmd_capture,
+        "failed": _cmd_failed,
+        "fix": _cmd_fix,
         "add": _cmd_add,
         "research": _cmd_research,
         "study": _cmd_study,

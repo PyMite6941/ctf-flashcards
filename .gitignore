@@ -29,3 +29,4 @@ ios/
 # env
 .env
 .env.local
+commands.db CLI DB
