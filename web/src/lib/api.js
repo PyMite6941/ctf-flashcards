@@ -101,20 +101,6 @@ export const api = {
       body: JSON.stringify({ correct }),
     }),
 
-  // Study groups / classes (teaching)
-  sgListGroups: (userId = "local") => req(`/sg/groups?userId=${encodeURIComponent(userId)}`),
-  sgCreateGroup: (group) =>
-    req("/sg/groups", { method: "POST", body: JSON.stringify(group) }),
-  sgGetGroup: (gid) => req(`/sg/groups/${gid}`),
-  sgAddMember: (gid, member) =>
-    req(`/sg/groups/${gid}/members`, { method: "POST", body: JSON.stringify(member) }),
-  sgListMembers: (gid) => req(`/sg/groups/${gid}/members`),
-  sgAssignTopic: (gid, a) =>
-    req(`/sg/groups/${gid}/assignments`, { method: "POST", body: JSON.stringify(a) }),
-  sgListAssignments: (gid) => req(`/sg/groups/${gid}/assignments`),
-  sgGroupProgress: (gid, userId = "local") =>
-    req(`/sg/groups/${gid}/progress?userId=${encodeURIComponent(userId)}`),
-
   // Badges / achievements
   badgesList: () => req("/badges"),
   badgesEarned: (userId = "local") => req(`/badges/earned?userId=${encodeURIComponent(userId)}`),

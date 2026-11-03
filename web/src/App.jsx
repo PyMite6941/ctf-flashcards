@@ -19,7 +19,6 @@ import { hasClerk } from "./lib/clerk.js";
 // Lazy-loaded heavy components (resource efficiency — not bundled into initial load).
 const Analytics = lazy(() => import("./components/Analytics.jsx"));
 const Badges = lazy(() => import("./components/Badges.jsx"));
-const StudyGroups = lazy(() => import("./components/StudyGroups.jsx"));
 const Scenarios = lazy(() => import("./components/Scenarios.jsx"));
 const ImportExport = lazy(() => import("./components/ImportExport.jsx"));
 
@@ -35,7 +34,6 @@ const TABS = [
   { id: "game", label: "Practice Game" },
   { id: "analytics", label: "Analytics" },
   { id: "badges", label: "Badges" },
-  { id: "groups", label: "Study Groups" },
   { id: "scenarios", label: "Scenarios" },
   { id: "import-export", label: "Import/Export" },
   { id: "add", label: "Add" },
@@ -189,11 +187,6 @@ export default function App() {
         {tab === "badges" && (
           <Suspense fallback={<Fallback />}>
             <Badges />
-          </Suspense>
-        )}
-        {tab === "groups" && (
-          <Suspense fallback={<Fallback />}>
-            <StudyGroups />
           </Suspense>
         )}
         {tab === "scenarios" && (
