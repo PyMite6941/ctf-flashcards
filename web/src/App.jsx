@@ -9,6 +9,7 @@ import Inbox from "./components/Inbox.jsx";
 import QuizMode from "./components/QuizMode.jsx";
 import TestMode from "./components/TestMode.jsx";
 import PracticeGame from "./components/PracticeGame.jsx";
+import Tutorial from "./components/Tutorial.jsx";
 import DepthToggle from "./components/DepthToggle.jsx";
 import AuthControls from "./components/AuthControls.jsx";
 import ClerkTokenBridge from "./components/ClerkTokenBridge.jsx";
@@ -58,6 +59,14 @@ export default function App() {
   const [testDepth, setTestDepth] = useState("medium");
   const [gameDepth, setGameDepth] = useState("medium");
   const [ccStats, setCCStats] = useState(null);
+  // Tutorial state — shows once unless reset in localStorage
+  const [showTutorial, setShowTutorial] = useState(() => {
+    try {
+      return localStorage.getItem("ctf_tutorial_seen") !== "1";
+    } catch {
+      return true;
+    }
+  });
 
   useEffect(() => {
     api
@@ -70,6 +79,26 @@ export default function App() {
     api.limits().then(setLimits).catch(() => {});
     api.ccStats().then(setCCStats).catch(() => {});
   }, [refresh]);
+
+  // Keyboard shortcuts: Ctrl+K capture, ? tutorial, 1-9 switch tabs
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setTab("add");
+      }
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
+        setShowTutorial(true);
+      }
+      const n = parseInt(e.key, 10);
+      if (!isNaN(n) && n >= 1 && n <= TABS.length && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setTab(TABS[n - 1].id);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     api.listInbox("pending").then((x) => setInboxCount(x.length)).catch(() => {});
@@ -191,6 +220,10 @@ export default function App() {
           onClose={() => setShowUpgrade(false)}
           onActivated={() => bump()}
         />
+      )}
+
+      {showTutorial && (
+        <Tutorial onComplete={() => setShowTutorial(false)} />
       )}
     </div>
   );
