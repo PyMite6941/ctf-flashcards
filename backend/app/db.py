@@ -578,3 +578,446 @@ def cc_stats() -> dict[str, Any]:
             ).fetchone()
             by_depth[d] = r[0]
     return {"total": total, "by_depth": by_depth}
+
+
+# ---------- study groups / classes (teaching feature) ----------
+
+def sg_init() -> None:
+    """Ensure study-group tables exist."""
+    with connect() as conn:
+        conn.executescript(
+            """
+CREATE TABLE IF NOT EXISTS study_groups (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    owner_id    TEXT NOT NULL DEFAULT 'local',
+    created_at  REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS study_group_members (
+    group_id   TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    role       TEXT NOT NULL DEFAULT 'member',
+    joined_at  REAL NOT NULL,
+    PRIMARY KEY (group_id, user_id),
+    FOREIGN KEY (group_id) REFERENCES study_groups(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS group_assignments (
+    id          TEXT PRIMARY KEY,
+    group_id    TEXT NOT NULL,
+    topic_slug  TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    due_at      REAL,
+    assigned_at REAL NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES study_groups(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ga_group ON group_assignments(group_id);
+CREATE INDEX IF NOT EXISTS idx_sgm_user ON study_group_members(user_id);
+"""
+        )
+
+
+def sg_create_group(name: str, description: str = "", owner_id: str = "local") -> dict:
+    sg_init()
+    gid = new_id()
+    ts = now()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO study_groups (id, name, description, owner_id, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (gid, name, description, owner_id, ts),
+        )
+        conn.execute(
+            "INSERT INTO study_group_members (group_id, user_id, role, joined_at) "
+            "VALUES (?,?,?,?)",
+            (gid, owner_id, "owner", ts),
+        )
+    return {"id": gid, "name": name, "description": description, "owner_id": owner_id}
+
+
+def sg_list_groups(user_id: str = "local") -> list[dict]:
+    sg_init()
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT g.* FROM study_groups g
+               JOIN study_group_members m ON m.group_id = g.id
+               WHERE m.user_id = ?
+               ORDER BY g.created_at DESC""",
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def sg_get_group(group_id: str) -> Optional[dict]:
+    sg_init()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM study_groups WHERE id = ?", (group_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def sg_add_member(group_id: str, user_id: str, role: str = "member") -> None:
+    sg_init()
+    with connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO study_group_members (group_id, user_id, role, joined_at) "
+            "VALUES (?,?,?,?)",
+            (group_id, user_id, role, now()),
+        )
+
+
+def sg_list_members(group_id: str) -> list[dict]:
+    sg_init()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM study_group_members WHERE group_id = ? ORDER BY joined_at",
+            (group_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def sg_assign_topic(group_id: str, topic_slug: str, title: str, due_at: Optional[float] = None) -> str:
+    sg_init()
+    aid = new_id()
+    ts = now()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO group_assignments (id, group_id, topic_slug, title, due_at, assigned_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (aid, group_id, topic_slug, title, due_at, ts),
+        )
+    return aid
+
+
+def sg_list_assignments(group_id: str) -> list[dict]:
+    sg_init()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM group_assignments WHERE group_id = ? ORDER BY assigned_at DESC",
+            (group_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def sg_group_progress(group_id: str, user_id: str = "local") -> dict:
+    """Progress for a user within a group: assignments + topic completion."""
+    sg_init()
+    assignments = sg_list_assignments(group_id)
+    out = []
+    for a in assignments:
+        prog = topic_card_progress(a["topic_slug"])
+        out.append({
+            "assignment_id": a["id"],
+            "topic_slug": a["topic_slug"],
+            "title": a["title"],
+            "due_at": a["due_at"],
+            "progress": prog,
+        })
+    return {"group_id": group_id, "assignments": out}
+
+
+# ---------- badges / achievements (learning gamification) ----------
+
+def badges_init() -> None:
+    """Ensure badge tables exist and seed default badges."""
+    with connect() as conn:
+        conn.executescript(
+            """
+CREATE TABLE IF NOT EXISTS badges (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    description    TEXT NOT NULL,
+    icon           TEXT NOT NULL DEFAULT '🏅',
+    criterion_type TEXT NOT NULL,
+    criterion_value INTEGER NOT NULL DEFAULT 1,
+    created_at     REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_badges (
+    user_id   TEXT NOT NULL,
+    badge_id  TEXT NOT NULL,
+    earned_at REAL NOT NULL,
+    PRIMARY KEY (user_id, badge_id),
+    FOREIGN KEY (badge_id) REFERENCES badges(id) ON DELETE CASCADE
+);
+"""
+        )
+        # Seed default badges if empty
+        count = conn.execute("SELECT COUNT(*) FROM badges").fetchone()[0]
+        if count == 0:
+            ts = now()
+            defaults = [
+                ("first_command", "First Steps", "Capture your first terminal command", "🎯",
+                 "commands_captured", 1, ts),
+                ("command_collector", "Command Collector", "Capture 25 commands", "📦",
+                 "commands_captured", 25, ts),
+                ("command_master", "Command Master", "Capture 100 commands", "🧠",
+                 "commands_captured", 100, ts),
+                ("streak_3", "3-Day Streak", "Review cards 3 days in a row", "🔥",
+                 "streak", 3, ts),
+                ("streak_7", "Week Warrior", "Review cards 7 days in a row", "💪",
+                 "streak", 7, ts),
+                ("cards_mastered", "Card Master", "Master 10 cards (reps >= 3)", "🃏",
+                 "cards_mastered", 10, ts),
+                ("perfect_score", "Perfect Score", "Score 100% on a study session", "⭐",
+                 "perfect_score", 1, ts),
+                ("scenario_solved", "Scenario Solver", "Complete a command chaining scenario", "🧩",
+                 "scenario_solved", 1, ts),
+            ]
+            for bid, name, desc, icon, ctype, cval, cts in defaults:
+                conn.execute(
+                    "INSERT INTO badges (id, name, description, icon, criterion_type, criterion_value, created_at) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (bid, name, desc, icon, ctype, cval, cts),
+                )
+
+
+def badges_list() -> list[dict]:
+    badges_init()
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM badges ORDER BY name").fetchall()
+    return [dict(r) for r in rows]
+
+
+def badges_earned(user_id: str = "local") -> list[dict]:
+    badges_init()
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT b.*, ub.earned_at FROM user_badges ub
+               JOIN badges b ON b.id = ub.badge_id
+               WHERE ub.user_id = ?
+               ORDER BY ub.earned_at DESC""",
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def badge_earn(user_id: str, badge_id: str) -> None:
+    """Award a badge to a user (idempotent)."""
+    badges_init()
+    with connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO user_badges (user_id, badge_id, earned_at) "
+            "VALUES (?,?,?)",
+            (user_id, badge_id, now()),
+        )
+
+
+def badge_check_and_award(user_id: str, criterion_type: str, value: int) -> list[str]:
+    """Check criteria against earned progress; return newly earned badge ids."""
+    badges_init()
+    newly: list[str] = []
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM badges WHERE criterion_type = ?", (criterion_type,)).fetchall()
+        for r in rows:
+            badge_id = r["id"]
+            already = conn.execute(
+                "SELECT 1 FROM user_badges WHERE user_id = ? AND badge_id = ?",
+                (user_id, badge_id),
+            ).fetchone()
+            if already:
+                continue
+            if value >= r["criterion_value"]:
+                conn.execute(
+                    "INSERT INTO user_badges (user_id, badge_id, earned_at) VALUES (?,?,?)",
+                    (user_id, badge_id, now()),
+                )
+                newly.append(badge_id)
+    return newly
+
+
+# ---------- progress snapshots (analytics / heatmap) ----------
+
+def progress_record_snapshot(user_id: str, date: str, cards_reviewed: int,
+                             correct_count: int, total_count: int,
+                             minutes_spent: int, commands_captured: int) -> None:
+    """Upsert a daily progress snapshot."""
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO progress_snapshots (id, user_id, date, cards_reviewed, correct_count, total_count, minutes_spent, commands_captured) "
+            "VALUES (?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(user_id, date) DO UPDATE SET "
+            "cards_reviewed = cards_reviewed + excluded.cards_reviewed, "
+            "correct_count = correct_count + excluded.correct_count, "
+            "total_count = total_count + excluded.total_count, "
+            "minutes_spent = minutes_spent + excluded.minutes_spent, "
+            "commands_captured = commands_captured + excluded.commands_captured",
+            (new_id(), user_id, date, cards_reviewed, correct_count, total_count, minutes_spent, commands_captured),
+        )
+
+
+def progress_get_snapshots(user_id: str = "local", days: int = 30) -> list[dict]:
+    from datetime import datetime, timezone, timedelta
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=days - 1)
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT * FROM progress_snapshots
+               WHERE user_id = ? AND date >= ? AND date <= ?
+               ORDER BY date ASC""",
+            (user_id, start.isoformat(), end.isoformat()),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def progress_stats(user_id: str = "local") -> dict:
+    with connect() as conn:
+        total_reviewed = conn.execute(
+            "SELECT COALESCE(SUM(cards_reviewed), 0) FROM progress_snapshots WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()[0]
+        total_correct = conn.execute(
+            "SELECT COALESCE(SUM(correct_count), 0) FROM progress_snapshots WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()[0]
+        total_minutes = conn.execute(
+            "SELECT COALESCE(SUM(minutes_spent), 0) FROM progress_snapshots WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()[0]
+        days_active = conn.execute(
+            "SELECT COUNT(*) FROM progress_snapshots WHERE user_id = ? AND cards_reviewed > 0",
+            (user_id,),
+        ).fetchone()[0]
+    accuracy = round((total_correct / total_reviewed * 100), 1) if total_reviewed else 0
+    return {
+        "cards_reviewed": total_reviewed,
+        "correct_count": total_correct,
+        "accuracy": accuracy,
+        "minutes_spent": total_minutes,
+        "days_active": days_active,
+    }
+
+
+# ---------- command chaining scenarios ----------
+
+def scenario_init() -> None:
+    """Ensure scenario tables exist."""
+    with connect() as conn:
+        conn.executescript(
+            """
+CREATE TABLE IF NOT EXISTS command_scenarios (
+    id             TEXT PRIMARY KEY,
+    title          TEXT NOT NULL,
+    description    TEXT NOT NULL,
+    objective      TEXT NOT NULL,
+    setup_commands TEXT NOT NULL DEFAULT '[]',
+    expected_patterns TEXT NOT NULL DEFAULT '[]',
+    hints          TEXT NOT NULL DEFAULT '[]',
+    difficulty     TEXT NOT NULL DEFAULT 'medium',
+    tags           TEXT NOT NULL DEFAULT '[]',
+    created_at     REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scenario_attempts (
+    id             TEXT PRIMARY KEY,
+    scenario_id    TEXT NOT NULL,
+    user_id        TEXT NOT NULL,
+    completed      INTEGER NOT NULL DEFAULT 0,
+    commands_run   TEXT NOT NULL DEFAULT '[]',
+    started_at     REAL NOT NULL,
+    completed_at   REAL,
+    FOREIGN KEY (scenario_id) REFERENCES command_scenarios(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_sa_scenario ON scenario_attempts(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_sa_user ON scenario_attempts(user_id);
+"""
+        )
+
+
+def scenario_list(difficulty: Optional[str] = None) -> list[dict]:
+    scenario_init()
+    q = "SELECT * FROM command_scenarios WHERE 1=1"
+    params: list[Any] = []
+    if difficulty:
+        q += " AND difficulty = ?"
+        params.append(difficulty)
+    q += " ORDER BY created_at ASC"
+    with connect() as conn:
+        rows = conn.execute(q, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def scenario_get(scenario_id: str) -> Optional[dict]:
+    scenario_init()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM command_scenarios WHERE id = ?", (scenario_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def scenario_create(title: str, description: str, objective: str,
+                    setup_commands: list[str], expected_patterns: list[str],
+                    hints: list[str], difficulty: str = "medium",
+                    tags: list[str] | None = None) -> str:
+    scenario_init()
+    sid = new_id()
+    ts = now()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO command_scenarios (id, title, description, objective, setup_commands, expected_patterns, hints, difficulty, tags, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (sid, title, description, objective,
+             json.dumps(setup_commands), json.dumps(expected_patterns),
+             json.dumps(hints), difficulty, json.dumps(tags or []), ts),
+        )
+    return sid
+
+
+def scenario_attempt_start(scenario_id: str, user_id: str = "local") -> str:
+    scenario_init()
+    aid = new_id()
+    ts = now()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO scenario_attempts (id, scenario_id, user_id, completed, commands_run, started_at) "
+            "VALUES (?,?,?,0,'[]',?)",
+            (aid, scenario_id, user_id, ts),
+        )
+    return aid
+
+
+def scenario_attempt_record(attempt_id: str, commands_run: list[str],
+                            completed: bool = False) -> None:
+    scenario_init()
+    with connect() as conn:
+        conn.execute(
+            "UPDATE scenario_attempts SET commands_run = ?, completed = ?, completed_at = ? WHERE id = ?",
+            (json.dumps(commands_run), 1 if completed else 0,
+             now() if completed else None, attempt_id),
+        )
+        if completed:
+            badge_check_and_award("local", "scenario_solved", 1)
+
+
+def scenario_attempts_for_user(user_id: str = "local") -> list[dict]:
+    scenario_init()
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT sa.*, cs.title FROM scenario_attempts sa
+               JOIN command_scenarios cs ON cs.id = sa.scenario_id
+               WHERE sa.user_id = ?
+               ORDER BY sa.started_at DESC""",
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------- personal card notes ----------
+
+def notes_get(card_id: str, user_id: str = "local") -> Optional[str]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT note FROM card_notes WHERE card_id = ? AND user_id = ?",
+            (card_id, user_id),
+        ).fetchone()
+    return row["note"] if row else None
+
+
+def notes_set(card_id: str, note: str, user_id: str = "local") -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO card_notes (card_id, user_id, note, updated_at) "
+            "VALUES (?,?,?,?) "
+            "ON CONFLICT(card_id, user_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at",
+            (card_id, user_id, note, now()),
+        )

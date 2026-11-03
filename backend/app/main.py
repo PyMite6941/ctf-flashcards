@@ -515,3 +515,262 @@ def reject_inbox(iid: str) -> dict:
         raise HTTPException(404, "inbox item not found")
     db.set_inbox_status(iid, "rejected")
     return {"ok": True}
+
+
+# ----------------------------- study groups / classes -----------------------------
+# Teaching feature: create classes/groups, assign topics, track member progress.
+
+
+class SGGroupIn(BaseModel):
+    name: str = Field(..., min_length=1)
+    description: str = ""
+    owner_id: str = "local"
+
+
+class SGMemberIn(BaseModel):
+    user_id: str = Field(..., min_length=1)
+    role: str = "member"
+
+
+class SGAssignmentIn(BaseModel):
+    topic_slug: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)
+    due_at: Optional[float] = None
+
+
+@app.get("/sg/groups")
+def sg_list_groups_route(user_id: str = "local") -> list[dict]:
+    db.sg_init()
+    return db.sg_list_groups(user_id)
+
+
+@app.post("/sg/groups", status_code=201)
+def sg_create_group_route(group: SGGroupIn) -> dict:
+    db.sg_init()
+    return db.sg_create_group(group.name, group.description, group.owner_id)
+
+
+@app.get("/sg/groups/{gid}")
+def sg_get_group_route(gid: str) -> dict:
+    db.sg_init()
+    g = db.sg_get_group(gid)
+    if not g:
+        raise HTTPException(404, "group not found")
+    return g
+
+
+@app.post("/sg/groups/{gid}/members", status_code=201)
+def sg_add_member_route(gid: str, member: SGMemberIn) -> dict:
+    db.sg_init()
+    db.sg_add_member(gid, member.user_id, member.role)
+    return {"ok": True}
+
+
+@app.get("/sg/groups/{gid}/members")
+def sg_list_members_route(gid: str) -> list[dict]:
+    db.sg_init()
+    return db.sg_list_members(gid)
+
+
+@app.post("/sg/groups/{gid}/assignments", status_code=201)
+def sg_assign_topic_route(gid: str, a: SGAssignmentIn) -> dict:
+    db.sg_init()
+    aid = db.sg_assign_topic(gid, a.topic_slug, a.title, a.due_at)
+    return {"assignment_id": aid}
+
+
+@app.get("/sg/groups/{gid}/assignments")
+def sg_list_assignments_route(gid: str) -> list[dict]:
+    db.sg_init()
+    return db.sg_list_assignments(gid)
+
+
+@app.get("/sg/groups/{gid}/progress")
+def sg_group_progress_route(gid: str, user_id: str = "local") -> dict:
+    db.sg_init()
+    return db.sg_group_progress(gid, user_id)
+
+
+# ----------------------------- badges / achievements -----------------------------
+
+
+@app.get("/badges")
+def badges_list_route() -> list[dict]:
+    db.badges_init()
+    return db.badges_list()
+
+
+@app.get("/badges/earned")
+def badges_earned_route(user_id: str = "local") -> list[dict]:
+    db.badges_init()
+    return db.badges_earned(user_id)
+
+
+class BadgeCheckIn(BaseModel):
+    criterion_type: str = Field(..., min_length=1)
+    value: int = Field(default=1, ge=0)
+
+
+@app.post("/badges/check")
+def badges_check_route(body: BadgeCheckIn, user_id: str = "local") -> dict:
+    db.badges_init()
+    newly = db.badge_check_and_award(user_id, body.criterion_type, body.value)
+    return {"newly_earned": newly, "earned": db.badges_earned(user_id)}
+
+
+# ----------------------------- progress / analytics -----------------------------
+
+
+class ProgressSnapshotIn(BaseModel):
+    date: str = Field(..., min_length=1)  # YYYY-MM-DD
+    cards_reviewed: int = Field(default=0, ge=0)
+    correct_count: int = Field(default=0, ge=0)
+    total_count: int = Field(default=0, ge=0)
+    minutes_spent: int = Field(default=0, ge=0)
+    commands_captured: int = Field(default=0, ge=0)
+
+
+@app.post("/progress/snapshot", status_code=201)
+def progress_record_snapshot_route(body: ProgressSnapshotIn,
+                                   user_id: str = "local") -> dict:
+    db.progress_record_snapshot(
+        user_id, body.date, body.cards_reviewed, body.correct_count,
+        body.total_count, body.minutes_spent, body.commands_captured,
+    )
+    return {"ok": True}
+
+
+@app.get("/progress/snapshots")
+def progress_get_snapshots_route(user_id: str = "local",
+                                 days: int = 30) -> list[dict]:
+    return db.progress_get_snapshots(user_id, days)
+
+
+@app.get("/progress/stats")
+def progress_stats_route(user_id: str = "local") -> dict:
+    return db.progress_stats(user_id)
+
+
+# ----------------------------- command chaining scenarios -----------------------------
+
+
+class ScenarioIn(BaseModel):
+    title: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1)
+    objective: str = Field(..., min_length=1)
+    setup_commands: list[str] = []
+    expected_patterns: list[str] = []
+    hints: list[str] = []
+    difficulty: str = "medium"
+    tags: list[str] = []
+
+
+class ScenarioAttemptRecord(BaseModel):
+    commands_run: list[str] = []
+    completed: bool = False
+
+
+@app.get("/scenarios")
+def scenario_list_route(difficulty: Optional[str] = None) -> list[dict]:
+    db.scenario_init()
+    return db.scenario_list(difficulty)
+
+
+@app.get("/scenarios/{sid}")
+def scenario_get_route(sid: str) -> dict:
+    db.scenario_init()
+    s = db.scenario_get(sid)
+    if not s:
+        raise HTTPException(404, "scenario not found")
+    return s
+
+
+@app.post("/scenarios", status_code=201)
+def scenario_create_route(s: ScenarioIn) -> dict:
+    db.scenario_init()
+    sid = db.scenario_create(
+        s.title, s.description, s.objective, s.setup_commands,
+        s.expected_patterns, s.hints, s.difficulty, s.tags,
+    )
+    return {"id": sid}
+
+
+@app.post("/scenarios/{sid}/attempt", status_code=201)
+def scenario_attempt_start_route(sid: str, user_id: str = "local") -> dict:
+    db.scenario_init()
+    aid = db.scenario_attempt_start(sid, user_id)
+    return {"attempt_id": aid}
+
+
+@app.post("/scenarios/attempts/{aid}")
+def scenario_attempt_record_route(aid: str, body: ScenarioAttemptRecord) -> dict:
+    db.scenario_init()
+    db.scenario_attempt_record(aid, body.commands_run, body.completed)
+    return {"ok": True, "completed": body.completed}
+
+
+@app.get("/scenarios/attempts")
+def scenario_attempts_route(user_id: str = "local") -> list[dict]:
+    db.scenario_init()
+    return db.scenario_attempts_for_user(user_id)
+
+
+# ----------------------------- personal card notes -----------------------------
+
+
+class CardNoteIn(BaseModel):
+    note: str = Field(..., min_length=1)
+    user_id: str = "local"
+
+
+@app.get("/notes/{card_id}")
+def notes_get_route(card_id: str, user_id: str = "local") -> dict:
+    note = db.notes_get(card_id, user_id)
+    return {"card_id": card_id, "note": note or ""}
+
+
+@app.post("/notes/{card_id}", status_code=201)
+def notes_set_route(card_id: str, body: CardNoteIn) -> dict:
+    db.notes_set(card_id, body.note, body.user_id)
+    return {"ok": True}
+
+
+# ----------------------------- import / export -----------------------------
+
+
+@app.get("/export/cards")
+def export_cards_route(format: str = "json") -> dict:
+    """Export all cards. format: 'json' | 'csv' | 'markdown'."""
+    cards = db.list_cards()
+    if format == "csv":
+        import csv, io
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["id", "front", "back", "kind", "deck", "tags", "due"])
+        for c in cards:
+            w.writerow([c["id"], c["front"], c["back"], c["kind"], c["deck"],
+                        ",".join(c["tags"]), c["due"]])
+        return {"format": "csv", "content": buf.getvalue()}
+    if format == "markdown":
+        lines = ["# CTF Flashcards Export", ""]
+        for c in cards:
+            lines.append(f"## {c['front']}")
+            lines.append(f"**Answer:** {c['back']}")
+            lines.append(f"**Tags:** {', '.join(c['tags'])}  **Deck:** {c['deck']}  **Kind:** {c['kind']}")
+            lines.append("")
+        return {"format": "markdown", "content": "\n".join(lines)}
+    return {"format": "json", "content": cards}
+
+
+@app.post("/import/cards", status_code=201)
+def import_cards_route(cards: list[dict]) -> dict:
+    """Import cards (JSON array). Each: {front, back, kind, deck, tags}."""
+    added = 0
+    for c in cards:
+        fsrs, due = scheduler.new_card_state()
+        db.insert_card(
+            c["front"], c["back"], c.get("kind", "flashcard"),
+            c.get("deck", "default"), c.get("tags", []), fsrs, due,
+        )
+        added += 1
+    return {"added": added}

@@ -169,6 +169,38 @@ def _cmd_fix(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_capture_buffer(args: argparse.Namespace) -> int:
+    """Bulk-insert commands from a buffer file (used by shell flush)."""
+    import os
+    init_db()
+    buf_path = os.environ.get("CTF_FLASH_FILE", "")
+    if not buf_path or not os.path.exists(buf_path):
+        return 0
+    count = 0
+    with open(buf_path, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            parts = line.split("\t", 2)
+            if len(parts) < 3:
+                continue
+            exit_code, raw, _ts = parts[0], parts[1], parts[2]
+            try:
+                ec = int(exit_code)
+            except ValueError:
+                ec = 0
+            capture_command(raw, exit_code=ec, source="shell")
+            count += 1
+    try:
+        os.unlink(buf_path)
+    except OSError:
+        pass
+    if count:
+        print(f"Flushed {count} commands from buffer.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ctf", description="CTF Flashcards CLI")
     sub = parser.add_subparsers(dest="cmd")
@@ -190,6 +222,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p_fix = sub.add_parser("fix", help="analyze and fix a failed command")
     p_fix.add_argument("id", type=int)
+
+    p_capture_buffer = sub.add_parser(
+        "capture-buffer", help="bulk-insert from shell buffer (internal)"
+    )
 
     p_add = sub.add_parser("add", help="add a captured command to study deck")
     p_add.add_argument("id", type=int)
@@ -219,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         "stats": _cmd_stats,
         "pending": _cmd_pending,
         "capture": _cmd_capture,
+        "capture-buffer": _cmd_capture_buffer,
         "failed": _cmd_failed,
         "fix": _cmd_fix,
         "add": _cmd_add,

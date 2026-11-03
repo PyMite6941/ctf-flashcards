@@ -100,6 +100,68 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ correct }),
     }),
+
+  // Study groups / classes (teaching)
+  sgListGroups: (userId = "local") => req(`/sg/groups?userId=${encodeURIComponent(userId)}`),
+  sgCreateGroup: (group) =>
+    req("/sg/groups", { method: "POST", body: JSON.stringify(group) }),
+  sgGetGroup: (gid) => req(`/sg/groups/${gid}`),
+  sgAddMember: (gid, member) =>
+    req(`/sg/groups/${gid}/members`, { method: "POST", body: JSON.stringify(member) }),
+  sgListMembers: (gid) => req(`/sg/groups/${gid}/members`),
+  sgAssignTopic: (gid, a) =>
+    req(`/sg/groups/${gid}/assignments`, { method: "POST", body: JSON.stringify(a) }),
+  sgListAssignments: (gid) => req(`/sg/groups/${gid}/assignments`),
+  sgGroupProgress: (gid, userId = "local") =>
+    req(`/sg/groups/${gid}/progress?userId=${encodeURIComponent(userId)}`),
+
+  // Badges / achievements
+  badgesList: () => req("/badges"),
+  badgesEarned: (userId = "local") => req(`/badges/earned?userId=${encodeURIComponent(userId)}`),
+  badgesCheck: (criterionType, value, userId = "local") =>
+    req("/badges/check", {
+      method: "POST",
+      body: JSON.stringify({ criterion_type: criterionType, value }),
+    }),
+
+  // Progress / analytics
+  progressRecordSnapshot: (snapshot) =>
+    req("/progress/snapshot", { method: "POST", body: JSON.stringify(snapshot) }),
+  progressSnapshots: (userId = "local", days = 30) =>
+    req(`/progress/snapshots?userId=${encodeURIComponent(userId)}&days=${days}`),
+  progressStats: (userId = "local") =>
+    req(`/progress/stats?userId=${encodeURIComponent(userId)}`),
+
+  // Command chaining scenarios
+  scenarioList: (difficulty = null) =>
+    req(`/scenarios${difficulty ? `?difficulty=${encodeURIComponent(difficulty)}` : ""}`),
+  scenarioGet: (sid) => req(`/scenarios/${sid}`),
+  scenarioCreate: (s) =>
+    req("/scenarios", { method: "POST", body: JSON.stringify(s) }),
+  scenarioAttemptStart: (sid, userId = "local") =>
+    req(`/scenarios/${sid}/attempt`, { method: "POST" }),
+  scenarioAttemptRecord: (aid, commandsRun, completed) =>
+    req(`/scenarios/attempts/${aid}`, {
+      method: "POST",
+      body: JSON.stringify({ commands_run: commandsRun, completed }),
+    }),
+  scenarioAttempts: (userId = "local") =>
+    req(`/scenarios/attempts?userId=${encodeURIComponent(userId)}`),
+
+  // Personal card notes
+  notesGet: (cardId, userId = "local") =>
+    req(`/notes/${cardId}?userId=${encodeURIComponent(userId)}`),
+  notesSet: (cardId, note, userId = "local") =>
+    req(`/notes/${cardId}`, {
+      method: "POST",
+      body: JSON.stringify({ note, user_id: userId }),
+    }),
+
+  // Import / export
+  exportCards: (format = "json") =>
+    req(`/export/cards?format=${encodeURIComponent(format)}`),
+  importCards: (cards) =>
+    req("/import/cards", { method: "POST", body: JSON.stringify(cards) }),
 };
 
 export const DIFFICULTY_COLOR = {

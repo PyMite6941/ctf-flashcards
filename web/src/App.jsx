@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense, lazy } from "react";
 import { api } from "./lib/api.js";
 import Home from "./components/Home.jsx";
 import ReviewSession from "./components/ReviewSession.jsx";
@@ -15,6 +15,15 @@ import ClerkTokenBridge from "./components/ClerkTokenBridge.jsx";
 import UpgradeModal from "./components/UpgradeModal.jsx";
 import { hasClerk } from "./lib/clerk.js";
 
+// Lazy-loaded heavy components (resource efficiency — not bundled into initial load).
+const Analytics = lazy(() => import("./components/Analytics.jsx"));
+const Badges = lazy(() => import("./components/Badges.jsx"));
+const StudyGroups = lazy(() => import("./components/StudyGroups.jsx"));
+const Scenarios = lazy(() => import("./components/Scenarios.jsx"));
+const ImportExport = lazy(() => import("./components/ImportExport.jsx"));
+
+const Fallback = () => <p className="muted small">Loading…</p>;
+
 const TABS = [
   { id: "home", label: "Home" },
   { id: "learn", label: "Learn (AI)" },
@@ -23,6 +32,11 @@ const TABS = [
   { id: "quiz", label: "Quiz" },
   { id: "test", label: "Test" },
   { id: "game", label: "Practice Game" },
+  { id: "analytics", label: "Analytics" },
+  { id: "badges", label: "Badges" },
+  { id: "groups", label: "Study Groups" },
+  { id: "scenarios", label: "Scenarios" },
+  { id: "import-export", label: "Import/Export" },
   { id: "add", label: "Add" },
   { id: "inbox", label: "Inbox" },
 ];
@@ -138,6 +152,31 @@ export default function App() {
         {tab === "quiz" && <QuizMode depth={quizDepth} />}
         {tab === "test" && <TestMode depth={testDepth} />}
         {tab === "game" && <PracticeGame depth={gameDepth} />}
+        {tab === "analytics" && (
+          <Suspense fallback={<Fallback />}>
+            <Analytics />
+          </Suspense>
+        )}
+        {tab === "badges" && (
+          <Suspense fallback={<Fallback />}>
+            <Badges />
+          </Suspense>
+        )}
+        {tab === "groups" && (
+          <Suspense fallback={<Fallback />}>
+            <StudyGroups />
+          </Suspense>
+        )}
+        {tab === "scenarios" && (
+          <Suspense fallback={<Fallback />}>
+            <Scenarios />
+          </Suspense>
+        )}
+        {tab === "import-export" && (
+          <Suspense fallback={<Fallback />}>
+            <ImportExport />
+          </Suspense>
+        )}
         {tab === "add" && <AddCard key={`a${refresh}`} onAdded={bump} />}
         {tab === "inbox" && <Inbox key={`i${refresh}`} onApproved={bump} />}
       </main>

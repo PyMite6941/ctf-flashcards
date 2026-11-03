@@ -426,3 +426,43 @@ input.shake { border-color: var(--danger); animation: shake 0.3s; }
 .game-input { font-size: 1.1rem; padding: 10px; }
 .game-input.correct { border-color: #22c55e; color: #bbf7d0; }
 .game-input.wrong { border-color: var(--danger); color: #fecaca; }
+
+/* Analytics heatmap */
+.heatmap { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.heat-cell { width: 22px; height: 22px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); }
+.heat-cell.level-1 { background: #0f4c5c; }
+.heat-cell.level-2 { background: #0b6e7e; }
+.heat-cell.level-3 { background: #1292a8; }
+.heat-cell.level-4 { background: #38bdf8; }
+.heatmap-legend { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.stat-tile { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; text-align: center; min-width: 90px; }
+.stat-tile .tile-value { font-size: 1.5rem; color: var(--accent); font-weight: 700; }
+.stat-tile .tile-label { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+.activity-row { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+
+/* Badges */
+.badges-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; }
+.badge-card { padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+.badge-card.locked { opacity: 0.5; border-style: dashed; }
+.badge-card.earned { border-color: var(--accent); background: var(--surface-2); }
+.badge-icon { font-size: 2rem; }
+.badge-info { display: flex; flex-direction: column; gap: 2px; }
+.badge-name { font-weight: 700; color: var(--text); }
+.badge-desc { font-size: 0.85rem; }
+.badge-criteria { font-size: 0.75rem; font-family: ui-monospace, monospace; }
+.badge-earned { margin-top: auto; font-size: 0.75rem; color: #22c55e; font-weight: 700; }
+.earned-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); margin: 4px 4px 0 0; }
+
+/* Study groups */
+.group-row { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer; margin-bottom: 8px; }
+.group-row.active { border-color: var(--accent); background: var(--surface-2); }
+.assignment-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.member-row { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+
+/* Scenarios terminal */
+.term-line { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.9rem; padding: 2px 0; }
+.prompt { color: var(--accent); margin-right: 6px; }
+.term-line.success { color: #22c55e; font-weight: 700; }
+
+/* Notes input */
+.notes-textarea { width: 100%; min-height: 80px; font-family: inherit; }
