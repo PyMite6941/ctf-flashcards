@@ -5,7 +5,7 @@ import { api, RATINGS } from "../lib/api.js";
 // 1. Show the prompt. 2. User types their answer BEFORE revealing (free recall,
 //    not multiple choice). 3. Reveal the correct answer. 4. User self-rates,
 //    which feeds FSRS to schedule the next appearance.
-export default function ReviewSession() {
+export default function ReviewSession({ depth = "" }) {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [i, setI] = useState(0);

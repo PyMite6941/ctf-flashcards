@@ -84,6 +84,22 @@ export const api = {
   approveInbox: (id, edit) =>
     req(`/inbox/${id}/approve`, { method: "POST", body: JSON.stringify(edit) }),
   rejectInbox: (id) => req(`/inbox/${id}/reject`, { method: "POST" }),
+
+  // Command cards (offline CLI learning)
+  ccStats: () => req("/cc/stats"),
+  ccListCards: (params = {}) => {
+    const q = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== "")
+    ).toString();
+    return req("/cc/cards" + (q ? `?${q}` : ""));
+  },
+  ccAddCard: (card) =>
+    req("/cc/cards", { method: "POST", body: JSON.stringify(card) }),
+  ccReview: (id, correct) =>
+    req(`/cc/cards/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ correct }),
+    }),
 };
 
 export const DIFFICULTY_COLOR = {

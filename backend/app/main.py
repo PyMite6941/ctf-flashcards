@@ -427,6 +427,54 @@ def submit_gen_challenge(
     }
 
 
+# ----------------------------- command cards (CLI learning) -----------------------------
+# Offline command study cards. Captured by the CLI tool, researchable from man
+# pages, and reviewable through flashcard / quiz / test / game modes.
+
+
+class CCCardIn(BaseModel):
+    command: str = Field(..., min_length=1)
+    front: str = Field(..., min_length=1)
+    back: str = Field(..., min_length=1)
+    depth: str = "medium"
+    tags: list[str] = []
+
+
+class CCReviewIn(BaseModel):
+    correct: bool
+
+
+@app.get("/cc/cards")
+def cc_list_cards_route(depth: Optional[str] = None, tag: Optional[str] = None,
+                        due_only: bool = False) -> list[dict]:
+    db.cc_init()
+    return db.cc_list_cards(depth, tag, due_only)
+
+
+@app.get("/cc/stats")
+def cc_stats_route() -> dict:
+    db.cc_init()
+    return db.cc_stats()
+
+
+@app.post("/cc/cards", status_code=201)
+def cc_add_card_route(card: CCCardIn) -> dict:
+    db.cc_init()
+    return db.cc_add_card(card.command, card.front, card.back, card.depth, card.tags)
+
+
+@app.post("/cc/cards/{cid}/review")
+def cc_review_route(cid: int, body: CCReviewIn) -> dict:
+    db.cc_init()
+    card = None
+    with db.connect() as conn:
+        row = conn.execute("SELECT * FROM command_cards WHERE id = ?", (cid,)).fetchone()
+    if not row:
+        raise HTTPException(404, "card not found")
+    db.cc_update_rep(cid, body.correct)
+    return {"ok": True, "correct": body.correct}
+
+
 # ----------------------------- review inbox -----------------------------
 
 @app.post("/inbox", status_code=201)

@@ -482,3 +482,99 @@ def bump_ai_gens(month: str, identity: str) -> int:
             (month, identity),
         ).fetchone()
     return row["gens"]
+
+
+# ---------- command cards (offline CLI command learning) ----------
+
+def cc_init() -> None:
+    """Ensure command card tables exist (shared with the CLI tool)."""
+    with connect() as conn:
+        conn.executescript(
+            """
+CREATE TABLE IF NOT EXISTS command_cards (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    command_id    INTEGER,          -- nullable: NULL for manually-added cards
+    command       TEXT NOT NULL DEFAULT '',
+    front         TEXT NOT NULL,
+    back          TEXT NOT NULL,
+    depth         TEXT NOT NULL DEFAULT 'medium',
+    tags          TEXT NOT NULL DEFAULT '[]',
+    reps          INTEGER NOT NULL DEFAULT 0,
+    due           TEXT NOT NULL,
+    created_at    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cc_due ON command_cards(due);
+CREATE INDEX IF NOT EXISTS idx_cc_depth ON command_cards(depth);
+"""
+        )
+
+
+def cc_list_cards(depth: Optional[str] = None, tag: Optional[str] = None,
+                  due_only: bool = False) -> list[dict[str, Any]]:
+    cc_init()
+    q = "SELECT * FROM command_cards WHERE 1=1"
+    params: list[Any] = []
+    if depth:
+        q += " AND depth = ?"
+        params.append(depth)
+    if tag:
+        q += " AND tags LIKE ?"
+        params.append(f'%"{tag}"%')
+    if due_only:
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        q += " AND due <= ?"
+        params.append(now_iso)
+    q += " ORDER BY due ASC, created_at DESC"
+    with connect() as conn:
+        rows = conn.execute(q, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def cc_add_card(command: str, front: str, back: str, depth: str = "medium",
+                tags: list[str] | None = None) -> dict[str, Any]:
+    cc_init()
+    tags = tags or ["command", command]
+    from datetime import datetime, timezone
+    due = datetime.now(timezone.utc).isoformat()
+    ts = now()
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO command_cards (command_id, command, front, back, depth, tags, reps, due, created_at) "
+            "VALUES (NULL,?,?,?,?,?,0,?,?)",
+            (command, front, back, depth, json.dumps(tags), due, ts),
+        )
+        cid = cur.lastrowid
+        row = conn.execute("SELECT * FROM command_cards WHERE id = ?", (cid,)).fetchone()
+    return dict(row)
+
+
+def cc_update_rep(card_id: int, correct: bool) -> None:
+    cc_init()
+    from datetime import datetime, timezone, timedelta
+    with connect() as conn:
+        conn.execute(
+            "UPDATE command_cards SET reps = reps + 1 WHERE id = ?", (card_id,)
+        )
+        row = conn.execute("SELECT depth, reps FROM command_cards WHERE id = ?", (card_id,)).fetchone()
+        depth = row["depth"] if row else "medium"
+        reps = (row["reps"] if row else 0) + 1
+        mult = {"shallow": 1, "medium": 1, "deep": 3}.get(depth, 1)
+        hours = (2 ** min(reps, 6)) * mult
+        due = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+        conn.execute(
+            "UPDATE command_cards SET due = ? WHERE id = ?", (due, card_id),
+        )
+
+
+def cc_stats() -> dict[str, Any]:
+    cc_init()
+    with connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM command_cards").fetchone()[0]
+        by_depth = {}
+        for d in ("shallow", "medium", "deep"):
+            r = conn.execute(
+                "SELECT COUNT(*) FROM command_cards WHERE depth = ?", (d,)
+            ).fetchone()
+            by_depth[d] = r[0]
+    return {"total": total, "by_depth": by_depth}

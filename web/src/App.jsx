@@ -6,6 +6,10 @@ import Puzzles from "./components/Puzzles.jsx";
 import Learn from "./components/Learn.jsx";
 import AddCard from "./components/AddCard.jsx";
 import Inbox from "./components/Inbox.jsx";
+import QuizMode from "./components/QuizMode.jsx";
+import TestMode from "./components/TestMode.jsx";
+import PracticeGame from "./components/PracticeGame.jsx";
+import DepthToggle from "./components/DepthToggle.jsx";
 import AuthControls from "./components/AuthControls.jsx";
 import ClerkTokenBridge from "./components/ClerkTokenBridge.jsx";
 import UpgradeModal from "./components/UpgradeModal.jsx";
@@ -16,6 +20,9 @@ const TABS = [
   { id: "learn", label: "Learn (AI)" },
   { id: "puzzles", label: "Puzzles" },
   { id: "review", label: "Flashcards" },
+  { id: "quiz", label: "Quiz" },
+  { id: "test", label: "Test" },
+  { id: "game", label: "Practice Game" },
   { id: "add", label: "Add" },
   { id: "inbox", label: "Inbox" },
 ];
@@ -31,6 +38,12 @@ export default function App() {
   const [refresh, setRefresh] = useState(0);
   const bump = useCallback(() => setRefresh((r) => r + 1), []);
   const openUpgrade = useCallback(() => setShowUpgrade(true), []);
+  // Depth level for command flashcards: shallow | medium | deep
+  const [reviewDepth, setReviewDepth] = useState("medium");
+  const [quizDepth, setQuizDepth] = useState("medium");
+  const [testDepth, setTestDepth] = useState("medium");
+  const [gameDepth, setGameDepth] = useState("medium");
+  const [ccStats, setCCStats] = useState(null);
 
   useEffect(() => {
     api
@@ -41,6 +54,7 @@ export default function App() {
       })
       .catch(() => setOnline(false));
     api.limits().then(setLimits).catch(() => {});
+    api.ccStats().then(setCCStats).catch(() => {});
   }, [refresh]);
 
   useEffect(() => {
@@ -72,8 +86,25 @@ export default function App() {
               </button>
             ))}
           {hasClerk && <AuthControls />}
-          <span className={`dot ${online === false ? "off" : online ? "on" : ""}`}
-            title={online === false ? "backend offline" : "backend online"} />
+          {["quiz", "test", "game", "review"].includes(tab) && (
+            <div className="depth-row">
+              <DepthToggle
+                value={tab === "review" ? reviewDepth : tab === "quiz" ? quizDepth : tab === "test" ? testDepth : gameDepth}
+                onChange={v => {
+                  if (tab === "review") setReviewDepth(v);
+                  if (tab === "quiz") setQuizDepth(v);
+                  if (tab === "test") setTestDepth(v);
+                  if (tab === "game") setGameDepth(v);
+                }}
+              />
+            </div>
+          )}
+          {ccStats && (
+            <span className="cc-chip" title="Command cards">
+              🃏 {ccStats.total} cards
+            </span>
+          )}
+          <span className={`dot ${online === false ? "off" : online ? "on" : ""}`} title={online === false ? "backend offline" : "backend online"} />
         </div>
       </header>
 
@@ -100,10 +131,13 @@ export default function App() {
       <main>
         {tab === "home" && <Home key={`h${refresh}`} go={setTab} limits={limits} openUpgrade={openUpgrade} />}
         {tab === "learn" && <Learn go={setTab} onGenerated={bump} limits={limits} openUpgrade={openUpgrade} />}
-        {tab === "review" && <ReviewSession key={`r${refresh}`} />}
+        {tab === "review" && <ReviewSession key={`r${refresh}`} depth={reviewDepth} setDepth={setReviewDepth} />}
         {/* stable key: solving refreshes header stats via onSolved without
             remounting (which would kick the user out of the solve view). */}
         {tab === "puzzles" && <Puzzles onSolved={bump} openUpgrade={openUpgrade} />}
+        {tab === "quiz" && <QuizMode depth={quizDepth} />}
+        {tab === "test" && <TestMode depth={testDepth} />}
+        {tab === "game" && <PracticeGame depth={gameDepth} />}
         {tab === "add" && <AddCard key={`a${refresh}`} onAdded={bump} />}
         {tab === "inbox" && <Inbox key={`i${refresh}`} onApproved={bump} />}
       </main>
