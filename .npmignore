@@ -1,0 +1,23 @@
+# npm ignore - exclude files not needed in the published package
+.git/
+.gitignore
+.github/
+docs/
+DOCUMENTATION.md
+CLAUDE.md
+DEPLOYMENT.md
+CONTRIBUTING.md
+SECURITY.md
+backend/
+monitor/
+web/
+worker/
+*.sq3
+*.pyc
+__pycache__/
+.env
+.env.local
+.env.production
+npm-debug.log*
+/cli/commands.db
+/cli/__pycache__/
