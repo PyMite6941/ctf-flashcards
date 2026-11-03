@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="CTF Flashcards — active-recall cybersecurity training. Solve HackTheBox-style CTF challenges, unlock concept cards into an FSRS-scheduled review deck. Local-first, offline-solvable.">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <title>🚩 CTF Flashcards — active-recall cybersecurity training</title>
+  <link rel="stylesheet" href="./site.css">
+</head>
+<body>
+  <header>
+    <nav class="wrap" aria-label="Main navigation">
+      <a class="brand" href="./">CTF Flashcards</a>
+      <div class="nav-links">
+        <a href="#what-it-is">What it is</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#puzzles">Puzzles</a>
+        <a href="#review">Review</a>
+        <a href="#quick-start">Quick start</a>
+        <a href="https://github.com/PyMite6941/ctf-flashcards">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Active-recall cybersecurity training</div>
+      <h1>Solve CTF challenges. Remember what you learn.</h1>
+      <p class="lead">Capture a flag and the puzzle’s concept cards flow straight into your FSRS-scheduled review deck — so what you learn actually sticks. Nine offline-solvable challenges across crypto, web, forensics, reversing, network, and misc.</p>
+      <div class="actions">
+        <a class="button button-primary" href="#quick-start">Get started</a>
+        <a class="button" href="https://github.com/PyMite6941/ctf-flashcards">View on GitHub</a>
+        <a class="button" href="#puzzles">Browse challenges</a>
+      </div>
+    </div>
+
+    <div class="code-card" aria-label="Demo command line example">
+      <div class="code-top">Run the backend locally</div>
+      <pre><span class="prompt">$</span> cd backend
+<span class="prompt">$</span> python -m venv .venv &amp;&amp; .venv\Scripts\activate
+<span class="prompt">$</span> pip install -r requirements.txt
+<span class="prompt">$</span> uvicorn app.main:app --reload
+<span class="prompt">$</span> open http://localhost:8000/docs</pre>
+    </div>
+
+    <section id="what-it-is">
+      <div class="wrap">
+        <h2>What it is</h2>
+        <p class="section-lead">CTF Flashcards is a cybersecurity active-recall app. It pairs HackTheBox-style capture-the-flag puzzles with spaced-repetition flashcards, so every concept you uncover in a challenge gets scheduled back into your memory at the moment you’re about to forget it.</p>
+        <div class="grid">
+          <article class="feature">
+            <h3>🧩 Puzzle catalog</h3>
+            <p>Nine self-contained, offline-solvable challenges. Each artifact is derived from its flag at import time, so data can never drift out of sync with the answer.</p>
+          </article>
+          <article class="feature">
+            <h3>🗂️ FSRS review deck</h3>
+            <p>Solving a puzzle unlocks its concept cards into your deck. Type your answer from memory, self-rate Again/Hard/Good/Easy, and FSRS reschedules each card.</p>
+          </article>
+          <article class="feature">
+            <h3>📥 Review inbox</h3>
+            <p>Candidate cards from a local monitor land in an inbox. Nothing enters the real deck without your explicit approval.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="how-it-works">
+      <div class="wrap">
+        <h2>How it works</h2>
+        <div class="grid">
+          <article class="feature">
+            <h3>1. Solve</h3>
+            <p>Work the artifact (Base64, hex, XOR, Caesar, log analysis, SQL injection, JWT…) and submit the flag.</p>
+          </article>
+          <article class="feature">
+            <h3>2. Unlock</h3>
+            <p>A correct flag reveals the solution and adds the puzzle’s concept cards to your review deck.</p>
+          </article>
+          <article class="feature">
+            <h3>3. Recall</h3>
+            <p>Review cards on an FSRS schedule — the algorithm spaces each review right before you’re likely to forget.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="puzzles">
+      <div class="wrap">
+        <h2>Puzzle categories</h2>
+        <p class="section-lead">Nine challenges across six categories. Each one teaches a real cybersecurity concept and unlocks flashcards for it.</p>
+        <div class="grid">
+          <article class="feature">
+            <h3>Crypto</h3>
+            <p>Base64, Caesar, MD5 hash cracking — encoding vs encryption, classical ciphers, broken hashes.</p>
+          </article>
+          <article class="feature">
+            <h3>Web</h3>
+            <p>SQL injection spotting, JWT “none” algorithm — injection root cause, unsigned token forgery.</p>
+          </article>
+          <article class="feature">
+            <h3>Forensics</h3>
+            <p>Hex dump reversal — bytes back to ASCII text.</p>
+          </article>
+          <article class="feature">
+            <h3>Reversing</h3>
+            <p>Single-byte XOR — known-plaintext key recovery, XOR reversibility.</p>
+          </article>
+          <article class="feature">
+            <h3>Network</h3>
+            <p>SSH brute-force log detective — counting failed logins per source IP.</p>
+          </article>
+          <article class="feature">
+            <h3>Misc</h3>
+            <p>Binary-to-ASCII decoding — bits to bytes to characters.</p>
+          </article>
+        </div>
+        <p class="note">Flags never reach the client. The solution and concept cards are revealed only after a correct submission.</p>
+      </div>
+    </section>
+
+    <section id="review">
+      <div class="wrap">
+        <h2>Review</h2>
+        <p class="section-lead">Topic-filtered queues, due-counts, and a full card lifecycle — create, review, delete, and manage your deck.</p>
+      </div>
+    </section>
+
+    <section id="quick-start">
+      <div class="wrap">
+        <h2>Quick start</h2>
+        <div class="code-card">
+          <div class="code-top">Backend (FastAPI + SQLite)</div>
+          <pre><span class="prompt">$</span> cd backend
+<span class="prompt">$</span> python -m venv .venv &amp;&amp; .venv\Scripts\activate
+<span class="prompt">$</span> pip install -r requirements.txt
+<span class="prompt">$</span> uvicorn app.main:app --reload
+<span class="prompt">$</span> # optional: seed starter cards
+<span class="prompt">$</span> python seed.py
+<span class="prompt">$</span> python test_api.py</pre>
+        </div>
+        <div class="code-card" style="margin-top:16px;">
+          <div class="code-top">Frontend (React + Vite)</div>
+          <pre><span class="prompt">$</span> cd web
+<span class="prompt">$</span> npm install
+<span class="prompt">$</span> npm run dev   # :5173</pre>
+        </div>
+        <div class="note">The shared backend is <code>backend/</code> (FastAPI + SQLite, local-dev twin). Production runs on Cloudflare Worker + D1 in <code>worker/</code>. The two stay behavior-identical.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div>CTF Flashcards &middot; RevenueCat Shipaton 2026</div>
+      <div><a href="https://github.com/PyMite6941/ctf-flashcards">GitHub</a> &middot; MIT License</div>
+    </div>
+  </footer>
+</body>
+</html>
