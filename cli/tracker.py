@@ -22,10 +22,24 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-DB_PATH = os.environ.get(
-    "CTF_CLI_DB",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "commands.db"),
-)
+def _default_db_path() -> str:
+    """Where the command DB lives when CTF_CLI_DB is not set.
+
+    A DB inside the package dir is wiped on every npm upgrade and is often
+    read-only for global installs, so default to a per-user data dir. An
+    existing legacy DB next to this file is still honoured so source-checkout
+    users keep their history.
+    """
+    legacy = os.path.join(os.path.dirname(os.path.abspath(__file__)), "commands.db")
+    if os.path.exists(legacy):
+        return legacy
+    base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or base
+    return os.path.join(base, "ctf-flashcards", "commands.db")
+
+
+DB_PATH = os.environ.get("CTF_CLI_DB") or _default_db_path()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS commands (
@@ -122,6 +136,9 @@ now = _now
 
 
 def connect() -> sqlite3.Connection:
+    parent = os.path.dirname(DB_PATH)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")

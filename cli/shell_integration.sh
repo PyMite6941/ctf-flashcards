@@ -37,6 +37,17 @@ else
   CTF_PYTHON=""
 fi
 
+# Run the bundled CLI from any working directory: put the repo root on
+# PYTHONPATH so `-m cli` resolves to *this* package.
+CTF_PKG_ROOT="$(cd "${CTF_CLI_DIR}/.." && pwd)"
+ctf_flashcards_cli() {
+  [[ -z "$CTF_PYTHON" ]] && return 127
+  PYTHONPATH="${CTF_PKG_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" "${CTF_PYTHON}" -m cli "$@"
+}
+
+# Set CTF_FLASHCARDS_PROMPT=0 to disable the interactive prompt on failure.
+CTF_FLASHCARDS_PROMPT="${CTF_FLASHCARDS_PROMPT:-1}"
+
 # Ensure buffer file exists.
 : > "$CTF_BUFFER_FILE"
 
@@ -44,8 +55,7 @@ fi
 # Buffer append — runs on every command, but is pure shell (no Python spawn).
 # ---------------------------------------------------------------------------
 ctf_flashcards_append() {
-  local status=$?
-  local last="${CTF_LAST_CMD:-${BASH_COMMAND:-}}"
+  local status="$1" last="$2"
   [[ -z "$last" ]] && return 0
   case "$last" in
     ctf_flashcards_*|history*|fc*) return 0 ;;
@@ -66,7 +76,7 @@ ctf_flashcards_flush() {
   cp "$CTF_BUFFER_FILE" "$tmp"
   : > "$CTF_BUFFER_FILE"
   # Pass the buffer file path via env; the Python side reads and bulk-inserts.
-  CTF_FLUSH_FILE="$tmp" "${CTF_PYTHON}" -m cli capture-buffer 2>/dev/null || true
+  CTF_FLUSH_FILE="$tmp" ctf_flashcards_cli capture-buffer >/dev/null 2>&1 || true
   rm -f "$tmp"
   CTF_LAST_FLUSH=$(date +%s)
 }
@@ -87,9 +97,9 @@ ctf_flashcards_maybe_flush() {
 # spawn unless the user chooses option 1 or 2).
 # ---------------------------------------------------------------------------
 ctf_flashcards_prompt_on_error() {
-  local status=$?
-  local last="${CTF_LAST_CMD:-${BASH_COMMAND:-}}"
+  local status="$1" last="$2" choice
   [[ -z "$last" ]] && return 0
+  [[ "$CTF_FLASHCARDS_PROMPT" == "0" ]] && return 0
   case "$last" in
     ctf_flashcards_*|history*|fc*) return 0 ;;
   esac
@@ -97,15 +107,17 @@ ctf_flashcards_prompt_on_error() {
   echo ""
   echo "[ctf-flashcards] Command failed (exit $status): $last"
   echo "  1) Add to study deck   2) Analyze & fix   3) Skip"
-  read -r -p "Choose [1/2/3]: " choice
+  # `read -p` means something else in zsh; print the prompt portably.
+  printf 'Choose [1/2/3]: '
+  read -r choice
   case "$choice" in
     1)
-      "${CTF_PYTHON}" -m cli capture "$last" --exit-code "$status" --source shell --depth medium 2>/dev/null || true
+      ctf_flashcards_cli capture "$last" --exit-code "$status" --source shell --depth medium || true
       ;;
     2)
-      "${CTF_PYTHON}" -m cli failed 2>/dev/null || true
+      ctf_flashcards_cli failed || true
       echo ""
-      echo "Run:  python -m cli fix <id>   to analyze and fix a failed command."
+      echo "Run:  ctf_flashcards_cli fix <id>   to analyze and fix a failed command."
       ;;
     *) : ;;
   esac
@@ -115,10 +127,22 @@ ctf_flashcards_prompt_on_error() {
 # Bash hook
 # ---------------------------------------------------------------------------
 if [[ -n "${BASH_VERSION:-}" ]]; then
+  # Seed with the current history number so entries loaded from HISTFILE
+  # are not recorded at the first prompt.
+  read -r CTF_LAST_HISTNUM _ <<< "$(HISTTIMEFORMAT='' builtin history 1)"
   ctf_flashcards_precmd() {
-    ctf_flashcards_append
+    local status=$?   # must be read first, before anything else runs
+    local entry num cmd
+    entry="$(HISTTIMEFORMAT='' builtin history 1)"
+    read -r num cmd <<< "$entry"
+    # Same history number as last prompt => user just hit Enter; skip.
+    if [[ -n "$num" && "$num" != "$CTF_LAST_HISTNUM" ]]; then
+      CTF_LAST_HISTNUM="$num"
+      ctf_flashcards_append "$status" "$cmd"
+      ctf_flashcards_prompt_on_error "$status" "$cmd"
+    fi
     ctf_flashcards_maybe_flush
-    ctf_flashcards_prompt_on_error
+    return $status
   }
   if [[ -z "${PROMPT_COMMAND:-}" ]]; then
     PROMPT_COMMAND="ctf_flashcards_precmd"
@@ -133,9 +157,15 @@ fi
 if [[ -n "${ZSH_VERSION:-}" ]]; then
   ctf_flashcards_preexec() { CTF_LAST_CMD="$1"; }
   ctf_flashcards_precmd_zsh() {
-    ctf_flashcards_append
+    local status=$?   # must be read first, before anything else runs
+    # preexec only fires for real commands; clear afterwards so an empty
+    # Enter doesn't re-record (or re-prompt for) the previous command.
+    if [[ -n "${CTF_LAST_CMD:-}" ]]; then
+      ctf_flashcards_append "$status" "$CTF_LAST_CMD"
+      ctf_flashcards_prompt_on_error "$status" "$CTF_LAST_CMD"
+      CTF_LAST_CMD=""
+    fi
     ctf_flashcards_maybe_flush
-    ctf_flashcards_prompt_on_error
   }
   autoload -U add-zsh-hook
   add-zsh-hook preexec ctf_flashcards_preexec

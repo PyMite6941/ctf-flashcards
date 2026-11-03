@@ -173,19 +173,26 @@ def _cmd_capture_buffer(args: argparse.Namespace) -> int:
     """Bulk-insert commands from a buffer file (used by shell flush)."""
     import os
     init_db()
-    buf_path = os.environ.get("CTF_FLASH_FILE", "")
+    # The shell side exports CTF_FLUSH_FILE; CTF_FLASH_FILE is accepted for
+    # backwards compatibility with an earlier (typo'd) name.
+    buf_path = os.environ.get("CTF_FLUSH_FILE") or os.environ.get("CTF_FLASH_FILE", "")
     if not buf_path or not os.path.exists(buf_path):
         return 0
     count = 0
     with open(buf_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            line = line.rstrip("\n")
+            line = line.rstrip("\r\n")
             if not line:
                 continue
-            parts = line.split("\t", 2)
-            if len(parts) < 3:
+            # Format: exit_code<TAB>command<TAB>timestamp. The command itself
+            # may contain tabs, so split the outer fields from both ends.
+            head = line.split("\t", 1)
+            if len(head) < 2:
                 continue
-            exit_code, raw, _ts = parts[0], parts[1], parts[2]
+            exit_code, rest = head
+            raw, sep, _ts = rest.rpartition("\t")
+            if not sep or not raw.strip():
+                continue
             try:
                 ec = int(exit_code)
             except ValueError:

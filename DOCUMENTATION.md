@@ -72,7 +72,6 @@ ctf-flashcards/
 │   ├── researcher.py        # Man-page research for flashcard generation
 │   ├── error_analyzer.py    # Failure diagnosis + fix suggestions
 │   ├── shell_integration.sh # Bash/zsh auto-capture (buffered)
-│   └── commands.db          # Local SQLite (gitignored)
 ├── worker/                  # Cloudflare Worker + D1 (production twin)
 ├── docs/                    # GitHub Pages landing site
 ├── .github/workflows/pages.yml  # GitHub Actions deploy
@@ -254,10 +253,17 @@ Source `cli/shell_integration.sh` in your `.bashrc` or `.zshrc`.
 
 **On command failure**: You're prompted to (1) add to study deck, (2) analyze & fix the error, or (3) skip. No Python spawns unless you choose option 1 or 2.
 
+Set `CTF_FLASHCARDS_PROMPT=0` before sourcing to disable the failure prompt (commands are still captured).
+
 ```bash
 # Manual flush
 ctf_flashcards_flush
+
+# Run any CLI subcommand from any directory
+ctf_flashcards_cli stats
 ```
+
+**Where data lives**: `$CTF_CLI_DB` if set; otherwise an existing legacy `cli/commands.db`; otherwise `~/.local/share/ctf-flashcards/commands.db` (`%LOCALAPPDATA%\ctf-flashcards\commands.db` on Windows, `$XDG_DATA_HOME` respected). Keeping it out of the package dir means `npm update` never wipes your history.
 
 ---
 

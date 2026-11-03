@@ -1,6 +1,6 @@
 {
   "name": "@pymite6941/ctf-flashcards",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Offline-first active-recall cybersecurity training. Capture terminal commands, review with FSRS-spaced flashcards, quiz yourself, and solve CTF challenges — all offline, no server required.",
   "author": "PyMite6941 <greshamd27@gmail.com>",
   "license": "MIT",
@@ -28,21 +28,14 @@
     "ctf": "bin/ctf-flashcards.js"
   },
   "files": [
-    "cli/__init__.py",
-    "cli/__main__.py",
-    "cli/tracker.py",
-    "cli/researcher.py",
-    "cli/error_analyzer.py",
-    "cli/notify.py",
-    "cli/study.py",
+    "cli/*.py",
     "cli/shell_integration.sh",
     "bin/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "install": "node -e \"console.log('ctf-flashcards installed. Run: ctf-flashcards --help')\"",
-    "test": "echo \"No tests\""
+    "test": "node scripts/smoke-test.js"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -32,3 +32,6 @@ ios/
 
 # CLI local database (scratch)
 cli/commands.db
+
+# cli local command DB (legacy in-package location)
+cli/commands.db*

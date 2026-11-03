@@ -57,6 +57,8 @@ python agent.py --demo                  # proves the log+scan -> inbox pipeline
 - Ratings are ints **1=Again 2=Hard 3=Good 4=Easy** everywhere (API, DB, FSRS, UI) — keep them aligned.
 - Monitor console output must stay ASCII (Windows cp1252 console crashes on `→`/unicode).
 - FastAPI startup event (which calls `db.init_db()`) only fires when `TestClient` is used as a context manager — remember that in tests.
+- **npm package** (`@pymite6941/ctf-flashcards`) ships `cli/*.py` + `bin/`. `npm test` packs the real tarball and runs the CLI from a foreign cwd — run it after touching `cli/` or `package.json` `files`. CI (`.github/workflows/ci.yml`) runs it on Linux/Windows/macOS plus backend tests, web build, worker syntax.
+- `cli/shell_integration.sh` must read `$?` as the **first** statement of the precmd hook, and invoke the CLI via `ctf_flashcards_cli` (sets PYTHONPATH) — bare `python -m cli` only works from the repo root. Keep it LF (`.gitattributes`).
 - Nothing enters the real deck without explicit inbox approval — that safeguard is the point, don't bypass it.
 
 ## Roadmap (not built yet)
