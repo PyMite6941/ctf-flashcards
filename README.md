@@ -40,20 +40,31 @@ Production is **all Cloudflare**: static frontend on Pages, backend as a Worker 
 ctf-flashcards/
 ├── worker/           Cloudflare Worker + D1 — PRODUCTION backend (deployed)
 │   ├── src/index.js      routes (fetch handler)
-│   ├── src/db.js         D1 storage (cards / reviews / solves / inbox / daily_usage)
-│   ├── src/puzzles.js    CTF puzzle catalog (artifacts derived from flags)
+│   ├── src/db.js         D1 storage
+│   ├── src/puzzles.js    CTF puzzle catalog
 │   ├── src/scheduler.js  FSRS via ts-fsrs
-│   ├── src/billing.js    daily free cap + Pro entitlement (verified via GRID Store)
+│   ├── src/billing.js    daily free cap + Pro entitlement
 │   └── schema.sql        D1 schema
 ├── backend/          FastAPI + SQLite — local-dev twin of the Worker (py-fsrs)
-│   └── app/              main · db · puzzles · scheduler · billing
+│   └── app/              main · db · puzzles · scheduler · billing · aigen
 ├── web/              React + Vite — deployed to Cloudflare Pages
-│   └── src/components/   Home · Puzzles · ReviewSession · AddCard · Inbox · UpgradeModal
-└── monitor/          Opt-in local agent — plugin watchers push candidate cards
-    └── watchers/         base · log_watcher · tool_watcher  (drop in more)
+│   └── src/components/   Home · Puzzles · ReviewSession · AddCard · Inbox ·
+│                           QuizMode · TestMode · PracticeGame · Analytics ·
+│                           Badges · Scenarios · ImportExport · Tutorial ·
+│                           DepthToggle · UpgradeModal · AuthControls
+├── cli/              Python CLI command tracker (capture + FSRS study deck)
+│   ├── __main__.py       CLI entry point
+│   ├── tracker.py        SQLite storage + capture
+│   ├── researcher.py     man-page research for flashcard generation
+│   ├── error_analyzer.py failure diagnosis + fix suggestions
+│   └── shell_integration.sh  bash/zsh auto-capture (buffered)
+├── monitor/          Opt-in local agent — plugin watchers push candidate cards
+│   └── watchers/         base · log_watcher · tool_watcher  (drop in more)
+├── docs/             GitHub Pages landing site (deployed via Actions)
+└── DOCUMENTATION.md  Full project documentation
 ```
 
-Web nav: **Home** (dashboard) · **Puzzles** (challenge board + solve view) · **Flashcards** (topic-filterable review) · **Add** · **Inbox**.
+Web nav: **Home** · **Learn (AI)** · **Puzzles** · **Flashcards** · **Quiz** · **Test** · **Practice Game** · **Analytics** · **Badges** · **Scenarios** · **Import/Export** · **Add** · **Inbox**.
 
 **Build order (from the plan):** shared backend → web app → Capacitor Android/iOS wrap → RevenueCat SDK. The backend stays shared the whole way — no per-platform logic.
 
@@ -79,7 +90,23 @@ npm run dev                     # http://localhost:5173
 # point at a non-default backend with:  VITE_API_URL=http://host:port npm run dev
 ```
 
-### 3. Local monitor (optional, opt-in)
+### 3. CLI command tracker
+
+```bash
+# From repo root (Windows):
+backend\.venv\Scripts\python.exe -m cli init
+backend\.venv\Scripts\python.exe -m cli stats
+```
+
+### Keyboard Shortcuts (web app)
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+K` / `Cmd+K` | Jump to Add (capture) tab |
+| `?` | Open/reopen tutorial |
+| `1-9` | Switch to tab N |
+
+### 4. Local monitor (optional, opt-in)
 ```bash
 cd monitor
 python agent.py --demo          # generates fake auth.log + nmap output, pushes to the inbox
@@ -146,6 +173,10 @@ The web build shows the premium surface as a placeholder; the SDK is wired in wh
 - [x] **Learn (AI)**: Groq generates topic flashcards + practice challenges + lab kit; challenges gated behind flashcard review; deterministic (solvable) artifacts
 - [x] Optional Clerk sign-in (zero-key demo fallback)
 - [x] Local monitor with plugin watchers (log + tool), inbox-safeguarded
+- [x] CLI command tracker: capture, pending, failed, add, research, study (flashcard/quiz/test/game)
+- [x] Shell integration: buffered auto-capture (no Python spawn per command)
+- [x] Tutorial: 5-step onboarding, shows once per user
+- [x] Badges: 8 achievements (First Steps, Command Collector, Command Master, streaks, Card Master, Perfect Score, Scenario Solver)
 - [x] 57-check backend test suite (`python test_api.py`), every puzzle verified solvable
 - [ ] Capacitor Android/iOS shells + RevenueCat (mobile paid tier) — future
 
@@ -165,6 +196,23 @@ The web build shows the premium surface as a placeholder; the SDK is wired in wh
 | GET/POST | `/inbox` | list pending / add a candidate |
 | POST | `/inbox/{id}/approve` | approve (with edits) → deck |
 | POST | `/inbox/{id}/reject` | reject a candidate |
+| GET | `/cc/cards` | list command cards (depth/tag/due filters) |
+| POST | `/cc/cards` | add a command card |
+| POST | `/cc/cards/{id}/review` | review a command card (correct/wrong) |
+| GET | `/cc/stats` | command card stats |
+| POST | `/ai/generate` | generate AI topic pack |
+| GET | `/ai/packs` | list AI topic packs |
+| GET | `/badges` | list all badges |
+| GET | `/badges/earned` | user's earned badges |
+| POST | `/badges/check` | check & award badges |
+| GET | `/progress/stats` | aggregate progress stats |
+| POST | `/progress/snapshot` | record daily progress |
+| GET | `/scenarios` | list command chaining scenarios |
+| POST | `/scenarios` | create a scenario |
+| POST | `/scenarios/{id}/attempt` | start a scenario attempt |
+| POST | `/scenarios/attempts/{id}` | record attempt commands |
+| GET | `/export/cards?format=json\|csv\|markdown` | export deck |
+| POST | `/import/cards` | import deck (JSON array) |
 
 ### Adding a puzzle
 Append a dict to `CATALOG` in `backend/app/puzzles.py`: `id`, `title`, `category`, `difficulty`, `points`, `description`, `hint`, `flag`, `artifact` (derive it from the flag with the `_b64`/`_caesar`/`_xor_hex`/… helpers so it can't drift), `solution`, and `cards` (the concept flashcards it unlocks, each with `tags` for topic filtering).
