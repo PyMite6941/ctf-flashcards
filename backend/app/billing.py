@@ -19,6 +19,7 @@ from typing import Optional
 
 # --- config (env-overridable) ---
 FREE_DAILY_SOLVES = int(os.environ.get("CTF_FREE_DAILY_SOLVES", "3"))
+FREE_MONTHLY_AI_GENS = int(os.environ.get("CTF_FREE_MONTHLY_AI_GENS", "9"))
 GRID_STORE_WORKER = os.environ.get(
     "GRID_STORE_WORKER_URL", "https://grid-store-worker.greshamd27.workers.dev"
 )

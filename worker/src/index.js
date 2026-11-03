@@ -381,4 +381,8 @@ const STARTER_CARDS = [
   { front: "What is the difference between a hash and encryption?", back: "Hashing is one-way (no key, not reversible); encryption is two-way (reversible with a key).", kind: "flashcard", deck: "crypto", tags: ["fundamentals"] },
   { front: "What nmap flag runs a SYN 'stealth' scan?", back: "-sS", kind: "flashcard", deck: "tools", tags: ["nmap"] },
   { front: "What is the purpose of a salt in password hashing?", back: "A unique random value per password so identical passwords hash differently, defeating rainbow tables.", kind: "flashcard", deck: "crypto", tags: ["passwords"] },
+  { front: "CHALLENGE: Spot the flaw — `query = \\\"SELECT * FROM users WHERE name = '\\\" + name + \\\"'\\\"`", back: "SQL injection: `name` is concatenated straight into the query. Fix with parameterized queries / prepared statements.", kind: "challenge", deck: "web", tags: ["sqli"] },
+  { front: "CHALLENGE: Decode this Base64 — `Y3RmezBrX3RoYXRzX2Jhc2U2NH0=`", back: "ctf{0k_thats_base64}", kind: "challenge", deck: "crypto", tags: ["encoding"] },
+  { front: "CHALLENGE: A log line reads `sshd: Failed password for root from 203.0.113.9 port 22 ssh2` repeated 400x in 1 min. What is it?", back: "An SSH brute-force / password-spray attempt. Mitigate: disable root SSH, use keys, rate-limit (fail2ban).", kind: "challenge", deck: "blue-team", tags: ["logs"] },
+  { front: "CHALLENGE: What kind of hash is `5f4dcc3b5aa765d61d8327deb882cf99` and what does it hash?", back: "32 hex chars = MD5. This is the well-known MD5 of the string 'password'.", kind: "challenge", deck: "crypto", tags: ["hashes"] },
 ];

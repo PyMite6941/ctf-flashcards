@@ -70,6 +70,41 @@ CREATE TABLE IF NOT EXISTS daily_usage (
 
 CREATE INDEX IF NOT EXISTS idx_cards_due    ON cards(due);
 CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox(status);
+
+-- AI-generated topic packs + practice challenges
+CREATE TABLE IF NOT EXISTS gen_packs (
+    id              TEXT PRIMARY KEY,
+    topic           TEXT NOT NULL,
+    topic_slug      TEXT NOT NULL UNIQUE,
+    labkit          TEXT NOT NULL DEFAULT '',
+    card_count      INTEGER NOT NULL DEFAULT 0,
+    challenge_count INTEGER NOT NULL DEFAULT 0,
+    created_at      REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS gen_challenges (
+    id             TEXT PRIMARY KEY,
+    topic_slug     TEXT NOT NULL,
+    title          TEXT NOT NULL,
+    category       TEXT NOT NULL DEFAULT 'ai',
+    difficulty     TEXT NOT NULL,
+    points         INTEGER NOT NULL,
+    description    TEXT NOT NULL,
+    hint           TEXT NOT NULL,
+    artifact       TEXT NOT NULL,
+    flag           TEXT NOT NULL,
+    solution       TEXT NOT NULL,
+    challenge_type TEXT NOT NULL,
+    created_at     REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gen_challenges_slug ON gen_challenges(topic_slug);
+
+-- Free-tier AI metering: generations per identity per UTC month (Pro = unlimited)
+CREATE TABLE IF NOT EXISTS monthly_ai (
+    month     TEXT NOT NULL,   -- 'YYYY-MM' UTC
+    identity  TEXT NOT NULL,
+    gens      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (month, identity)
+);
 """
 
 
@@ -316,3 +351,134 @@ def bump_solves_today(day: str, identity: str) -> int:
             (day, identity),
         ).fetchone()
     return row["solves"]
+
+
+# ---------- AI topic packs + practice challenges ----------
+
+def upsert_pack(
+    topic: str,
+    topic_slug: str,
+    labkit: str,
+    card_count: int,
+    challenge_count: int,
+) -> None:
+    ts = now()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO gen_packs (id, topic, topic_slug, labkit, card_count, challenge_count, created_at) "
+            "VALUES (?,?,?,?,?,?,?) "
+            "ON CONFLICT(topic_slug) DO UPDATE SET topic=excluded.topic, labkit=excluded.labkit, "
+            "card_count=excluded.card_count, challenge_count=excluded.challenge_count",
+            (new_id(), topic, topic_slug, labkit, card_count, challenge_count, ts),
+        )
+
+
+def insert_gen_challenge(challenge: dict) -> str:
+    cid = new_id()
+    ts = now()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO gen_challenges (id, topic_slug, title, category, difficulty, points, description, hint, artifact, flag, solution, challenge_type, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                cid,
+                challenge["topic_slug"],
+                challenge["title"],
+                challenge.get("category", "ai"),
+                challenge["difficulty"],
+                challenge["points"],
+                challenge["description"],
+                challenge["hint"],
+                challenge["artifact"],
+                challenge["flag"],
+                challenge["solution"],
+                challenge["challenge_type"],
+                ts,
+            ),
+        )
+    return cid
+
+
+def delete_gen_challenges_for_slug(topic_slug: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM gen_challenges WHERE topic_slug = ?", (topic_slug,))
+
+
+def list_packs() -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM gen_packs ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_pack(topic_slug: str) -> Optional[dict]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM gen_packs WHERE topic_slug = ?", (topic_slug,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def gen_challenges_for_slug(topic_slug: str) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM gen_challenges WHERE topic_slug = ? ORDER BY created_at ASC",
+            (topic_slug,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_gen_challenge(challenge_id: str) -> Optional[dict]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM gen_challenges WHERE id = ?", (challenge_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def topic_card_progress(topic_slug: str) -> dict:
+    """A topic's flashcards are 'finished' once every card tagged topic:<slug>
+    has been reviewed at least once (FSRS reps >= 1). Returns {total, reviewed, done}."""
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT fsrs FROM cards WHERE tags LIKE ?", (f'%\"topic:{topic_slug}\"%',)
+        ).fetchall()
+    total = len(rows)
+    reviewed = 0
+    for r in rows:
+        try:
+            if json.loads(r["fsrs"]).get("reps", 0) >= 1:
+                reviewed += 1
+        except Exception:
+            pass
+    return {"total": total, "reviewed": reviewed, "done": total > 0 and reviewed >= total}
+
+
+# ---------- free-tier monthly AI metering ----------
+
+def ai_gens_this_month(month: str, identity: str) -> int:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT gens FROM monthly_ai WHERE month = ? AND identity = ?",
+            (month, identity),
+        ).fetchone()
+    return row["gens"] if row else 0
+
+
+def bump_ai_gens(month: str, identity: str) -> int:
+    """Increment and return the new monthly AI generation count for this identity."""
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO monthly_ai (month, identity, gens) VALUES (?, ?, 1) "
+            "ON CONFLICT(month, identity) DO UPDATE SET gens = gens + 1",
+            (month, identity),
+        )
+        row = conn.execute(
+            "SELECT gens FROM monthly_ai WHERE month = ? AND identity = ?",
+            (month, identity),
+        ).fetchone()
+    return row["gens"]
