@@ -29,4 +29,6 @@ ios/
 # env
 .env
 .env.local
-commands.db CLI DB
+
+# CLI local database (scratch)
+cli/commands.db
