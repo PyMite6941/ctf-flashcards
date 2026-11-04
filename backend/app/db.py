@@ -691,10 +691,31 @@ def badge_check_and_award(user_id: str, criterion_type: str, value: int) -> list
 
 # ---------- progress snapshots (analytics / heatmap) ----------
 
+def progress_init() -> None:
+    """Ensure the progress_snapshots table exists."""
+    with connect() as conn:
+        conn.executescript(
+            """
+CREATE TABLE IF NOT EXISTS progress_snapshots (
+    id                TEXT PRIMARY KEY,
+    user_id           TEXT NOT NULL,
+    date              TEXT NOT NULL,
+    cards_reviewed    INTEGER NOT NULL DEFAULT 0,
+    correct_count     INTEGER NOT NULL DEFAULT 0,
+    total_count       INTEGER NOT NULL DEFAULT 0,
+    minutes_spent     INTEGER NOT NULL DEFAULT 0,
+    commands_captured INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (user_id, date)
+);
+"""
+        )
+
+
 def progress_record_snapshot(user_id: str, date: str, cards_reviewed: int,
                              correct_count: int, total_count: int,
                              minutes_spent: int, commands_captured: int) -> None:
     """Upsert a daily progress snapshot."""
+    progress_init()
     with connect() as conn:
         conn.execute(
             "INSERT INTO progress_snapshots (id, user_id, date, cards_reviewed, correct_count, total_count, minutes_spent, commands_captured) "
@@ -710,6 +731,7 @@ def progress_record_snapshot(user_id: str, date: str, cards_reviewed: int,
 
 
 def progress_get_snapshots(user_id: str = "local", days: int = 30) -> list[dict]:
+    progress_init()
     from datetime import datetime, timezone, timedelta
     end = datetime.now(timezone.utc).date()
     start = end - timedelta(days=days - 1)
@@ -724,6 +746,7 @@ def progress_get_snapshots(user_id: str = "local", days: int = 30) -> list[dict]
 
 
 def progress_stats(user_id: str = "local") -> dict:
+    progress_init()
     with connect() as conn:
         total_reviewed = conn.execute(
             "SELECT COALESCE(SUM(cards_reviewed), 0) FROM progress_snapshots WHERE user_id = ?",
@@ -867,7 +890,24 @@ def scenario_attempts_for_user(user_id: str = "local") -> list[dict]:
 
 # ---------- personal card notes ----------
 
+def notes_init() -> None:
+    """Ensure the card_notes table exists."""
+    with connect() as conn:
+        conn.executescript(
+            """
+CREATE TABLE IF NOT EXISTS card_notes (
+    card_id    TEXT NOT NULL,
+    user_id    TEXT NOT NULL DEFAULT 'local',
+    note       TEXT NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (card_id, user_id)
+);
+"""
+        )
+
+
 def notes_get(card_id: str, user_id: str = "local") -> Optional[str]:
+    notes_init()
     with connect() as conn:
         row = conn.execute(
             "SELECT note FROM card_notes WHERE card_id = ? AND user_id = ?",
@@ -877,6 +917,7 @@ def notes_get(card_id: str, user_id: str = "local") -> Optional[str]:
 
 
 def notes_set(card_id: str, note: str, user_id: str = "local") -> None:
+    notes_init()
     with connect() as conn:
         conn.execute(
             "INSERT INTO card_notes (card_id, user_id, note, updated_at) "
